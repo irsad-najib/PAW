@@ -1,10 +1,3 @@
-# PAW
-
-## Backend
-- develope mode : npm run dev / yarn dev
-- production mode : npm run start / yarn start
-
-## Frontend
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
