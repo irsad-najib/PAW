@@ -14,10 +14,12 @@ app.use(cors());
 const menuRoutes = require("./src/routes/menu.routes");
 const holidayRoutes = require("./src/routes/holiday.routes");
 const orderRoutes = require("./src/routes/order.routes");
+const paymentRoutes = require("./src/routes/payment.routes");
 
 app.use("/api/menus", menuRoutes);
 app.use("/api/holidays", holidayRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/payments", require(paymentRoutes));
 
 // Sample Route
 app.get("/hello", (req, res) => {
