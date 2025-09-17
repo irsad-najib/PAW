@@ -10,6 +10,13 @@ connectDB();
 app.use(express.json());
 app.use(cors());
 
+// Routes
+const menuRoutes = require("./src/routes/menu.routes");
+const holidayRoutes = require("./src/routes/holiday.routes");
+
+app.use("/api/menus", menuRoutes);
+app.use("/api/holidays", holidayRoutes);
+
 // Sample Route
 app.get("/hello", (req, res) => {
   res.send("Hello World!");
