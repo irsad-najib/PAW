@@ -14,6 +14,7 @@ app.use(cors());
 const menuRoutes = require("./src/routes/menu.routes");
 const holidayRoutes = require("./src/routes/holiday.routes");
 const orderRoutes = require("./src/routes/order.routes");
+const paymentRoutes = require("./src/routes/payment.routes");
 const notificationRoutes = require("./src/routes/notification.routes");
 
 app.use("/api/menus", menuRoutes);
@@ -53,6 +54,7 @@ app.post("/api/notify", async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+app.use("/api/payments", paymentRoutes);
 
 // Sample Route
 app.get("/hello", (req, res) => {
