@@ -19,7 +19,7 @@ const paymentRoutes = require("./src/routes/payment.routes");
 app.use("/api/menus", menuRoutes);
 app.use("/api/holidays", holidayRoutes);
 app.use("/api/orders", orderRoutes);
-app.use("/api/payments", require(paymentRoutes));
+app.use("/api/payments", paymentRoutes);
 
 // Sample Route
 app.get("/hello", (req, res) => {
