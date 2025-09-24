@@ -1,6 +1,7 @@
 const express = require("express");
-const Menu = require("../models/menu.model");
 const router = express.Router();
+const Menu = require("../models/menu.model");
+const authenticateToken = require("../middleware/JWT");
 
 /**
  * @swagger
@@ -16,217 +17,129 @@ const router = express.Router();
  *     Menu:
  *       type: object
  *       properties:
- *         _id: { type: string }
- *         name: { type: string }
- *         price: { type: number }
- *         category: { type: string }
- *         createdAt: { type: string, format: date-time }
- *         updatedAt: { type: string, format: date-time }
- *     CreateMenuInput:
+ *         _id:
+ *           type: string
+ *         name:
+ *           type: string
+ *         description:
+ *           type: string
+ *         price:
+ *           type: number
+ *         category:
+ *           type: string
+ *         image:
+ *           type: string
+ *         available:
+ *           type: boolean
+ *     MenuInput:
  *       type: object
- *       required: [name, price]
+ *       required:
+ *         - name
+ *         - price
+ *         - category
  *       properties:
- *         name: { type: string, example: "Nasi Goreng" }
- *         price: { type: number, example: 25000 }
- *         category: { type: string, example: "Makanan" }
- *     UpdateMenuInput:
- *       type: object
- *       properties:
- *         name: { type: string, example: "Nasi Goreng Spesial" }
- *         price: { type: number, example: 30000 }
- *         category: { type: string, example: "Makanan" }
+ *         name:
+ *           type: string
+ *         description:
+ *           type: string
+ *         price:
+ *           type: number
+ *         category:
+ *           type: string
+ *         image:
+ *           type: string
+ *         available:
+ *           type: boolean
  */
 
-// CREATE menu
-/**
- * @swagger
- * /api/menu:
- *   post:
- *     summary: Tambah menu
- *     tags: [Menu]
- *     security: [ { bearerAuth: [] } ]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/CreateMenuInput'
- *     responses:
- *       201:
- *         description: Menu dibuat
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Menu'
- *       400:
- *         description: Data invalid
- *       500:
- *         description: Error server
- */
-router.post("/", async (req, res) => {
-  try {
-    const { name, price, category } = req.body;
-
-    if (!name || price === undefined) {
-      return res.status(400).json({ message: "name dan price wajib diisi" });
-    }
-    if (typeof price !== "number" || price < 0) {
-      return res.status(400).json({ message: "price harus angka >= 0" });
-    }
-
-    const menu = await Menu.create({ name, price, category });
-    res.status(201).json(menu);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// READ semua menu
 /**
  * @swagger
  * /api/menu:
  *   get:
- *     summary: List semua menu
+ *     summary: Dapatkan semua menu
  *     tags: [Menu]
  *     responses:
  *       200:
- *         description: Daftar menu
+ *         description: List menu berhasil diambil
  *         content:
  *           application/json:
  *             schema:
  *               type: array
- *               items: { $ref: '#/components/schemas/Menu' }
- *       500:
- *         description: Error server
+ *               items:
+ *                 $ref: '#/components/schemas/Menu'
  */
 router.get("/", async (req, res) => {
   try {
-    const menus = await Menu.find().sort({ createdAt: -1 }).lean();
+    const menus = await Menu.find({ available: true });
     res.json(menus);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// READ satu menu by ID
 /**
  * @swagger
  * /api/menu/{id}:
  *   get:
- *     summary: Ambil detail menu
+ *     summary: Dapatkan menu berdasarkan ID
  *     tags: [Menu]
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: string }
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
- *         description: Detail menu
+ *         description: Menu ditemukan
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Menu'
  *       404:
  *         description: Menu tidak ditemukan
- *       500:
- *         description: Error server
  */
 router.get("/:id", async (req, res) => {
   try {
     const menu = await Menu.findById(req.params.id);
-    if (!menu) return res.status(404).json({ message: "Menu not found" });
+    if (!menu) {
+      return res.status(404).json({ message: "Menu tidak ditemukan" });
+    }
     res.json(menu);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// UPDATE menu
 /**
  * @swagger
- * /api/menu/{id}:
- *   put:
- *     summary: Update menu
+ * /api/menu:
+ *   post:
+ *     summary: Tambah menu baru (Admin only)
  *     tags: [Menu]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/UpdateMenuInput'
+ *             $ref: '#/components/schemas/MenuInput'
  *     responses:
- *       200:
- *         description: Menu diupdate
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Menu'
- *       400:
- *         description: Data invalid
- *       404:
- *         description: Menu tidak ditemukan
- *       500:
- *         description: Error server
+ *       201:
+ *         description: Menu berhasil ditambahkan
+ *       401:
+ *         description: Tidak terautentikasi
+ *       403:
+ *         description: Tidak memiliki akses
  */
-router.put("/:id", async (req, res) => {
+router.post("/", authenticateToken, async (req, res) => {
   try {
-    const { price } = req.body;
-    if (price !== undefined) {
-      if (typeof price !== "number" || price < 0) {
-        return res.status(400).json({ message: "price harus angka >= 0" });
-      }
-    }
-
-    const menu = await Menu.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
-    if (!menu) return res.status(404).json({ message: "Menu not found" });
-    res.json(menu);
+    const menu = new Menu(req.body);
+    await menu.save();
+    res.status(201).json(menu);
   } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// DELETE menu
-/**
- * @swagger
- * /api/menu/{id}:
- *   delete:
- *     summary: Hapus menu
- *     tags: [Menu]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Menu dihapus
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string }
- *       404:
- *         description: Menu tidak ditemukan
- *       500:
- *         description: Error server
- */
-router.delete("/:id", async (req, res) => {
-  try {
-    const menu = await Menu.findByIdAndDelete(req.params.id);
-    if (!menu) return res.status(404).json({ message: "Menu not found" });
-    res.json({ message: "Menu deleted" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(400).json({ message: error.message });
   }
 });
 

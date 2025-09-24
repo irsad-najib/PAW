@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Order = require("../models/order.model");
 const Menu = require("../models/menu.model");
+const authenticateToken = require("../middleware/JWT");
 
 /**
  * @swagger
@@ -16,38 +17,105 @@ const Menu = require("../models/menu.model");
 
 /**
  * @swagger
- * /api/order:
- *   post:
- *     summary: Buat order baru
+ * components:
+ *   schemas:
+ *     Order:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *         userId:
+ *           type: string
+ *         items:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               menuId:
+ *                 type: string
+ *               quantity:
+ *                 type: number
+ *               price:
+ *                 type: number
+ *         totalAmount:
+ *           type: number
+ *         status:
+ *           type: string
+ *           enum: [pending, confirmed, preparing, ready, delivered, cancelled]
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *     OrderInput:
+ *       type: object
+ *       required:
+ *         - items
+ *       properties:
+ *         items:
+ *           type: array
+ *           items:
+ *             type: object
+ *             properties:
+ *               menuId:
+ *                 type: string
+ *               quantity:
+ *                 type: number
+ */
+
+/**
+ * @swagger
+ * /api/orders:
+ *   get:
+ *     summary: Dapatkan semua pesanan pengguna
  *     tags: [Orders]
- *     security: [ { bearerAuth: [] } ]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List pesanan berhasil diambil
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Order'
+ */
+router.get("/", authenticateToken, async (req, res) => {
+  try {
+    const orders = await Order.find({ userId: req.user.userId })
+      .populate("items.menuId")
+      .sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/orders:
+ *   post:
+ *     summary: Buat pesanan baru
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [items]
- *             properties:
- *               items:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     menuId: { type: string }
- *                     qty: { type: integer }
+ *             $ref: '#/components/schemas/OrderInput'
  *     responses:
  *       201:
- *         description: Order dibuat
+ *         description: Pesanan berhasil dibuat
  *       400:
- *         description: Data invalid
+ *         description: Data tidak valid
  */
-router.post("/", async (req, res) => {
+router.post("/", authenticateToken, async (req, res) => {
   try {
     const { items, orderDates, deliveryType, deliveryAddress, deliveryTime } =
       req.body;
 
-    const userId = "64a7f1c2e4b0f5b6c8d9e0a1"; // sementara
+    const userId = req.user.userId;
 
     // Validasi permintaan
     if (

@@ -1,6 +1,6 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 require("dotenv").config();
 const User = require("../models/user.model");
 const authenticateToken = require("../middleware/JWT");
@@ -49,37 +49,22 @@ function generateToken(user) {
  */
 router.post("/register", async (req, res) => {
   try {
-    const { userID, UserName, password, Role } = req.body;
-    if (!userID || !UserName || !password) {
-      return res
-        .status(400)
-        .json({ message: "userID, UserName, password wajib" });
+    const { username, email, password } = req.body;
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "Email sudah terdaftar" });
     }
 
-    const existing = await User.findOne({
-      $or: [{ userID }, { UserName }],
-    });
-    if (existing) {
-      return res.status(409).json({ message: "User sudah ada" });
-    }
-
-    const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({
-      userID,
-      UserName,
-      password: hashed,
-      Role: Role || "user",
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({
+      username,
+      email,
+      password: hashedPassword,
     });
 
-    res.status(201).json({
-      message: "Registered",
-      user: {
-        id: user._id,
-        userID: user.userID,
-        UserName: user.UserName,
-        Role: user.Role,
-      },
-    });
+    await user.save();
+    res.status(201).json({ message: "User berhasil didaftarkan" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -91,30 +76,49 @@ router.post("/register", async (req, res) => {
  *   post:
  *     summary: Login (pakai userID atau UserName)
  *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UserLogin'
+ *     responses:
+ *       200:
+ *         description: Login berhasil
+ *       401:
+ *         description: Kredensial tidak valid
+ *       500:
+ *         description: Server error
  */
 router.post("/login", async (req, res) => {
   try {
-    const { userID, UserName, password } = req.body;
-    if ((!userID && !UserName) || !password) {
-      return res
-        .status(400)
-        .json({ message: "userID/UserName & password wajib" });
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ message: "Email atau password salah" });
     }
 
-    const user = await User.findOne(userID ? { userID } : { UserName });
-    if (!user) return res.status(401).json({ message: "User tidak ditemukan" });
-
-    if (!user.password) {
-      return res
-        .status(401)
-        .json({ message: "Akun OAuth tidak bisa login password" });
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ message: "Email atau password salah" });
     }
 
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ message: "Password salah" });
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "24h" }
+    );
 
-    const token = generateToken(user);
-    res.json({ message: "Login sukses", token });
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
