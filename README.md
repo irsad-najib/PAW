@@ -19,6 +19,15 @@ Aplikasi ini adalah solusi digital komprehensif yang dirancang untuk memodernisa
 - develope mode : npm run dev / yarn dev
 - production mode : npm run start / yarn start
 
+🚀 API Documentation
+
+Project ini udah dilengkapi dengan Swagger UI supaya gampang buat eksplorasi dan testing endpoint.
+Kamu bisa langsung akses dokumentasinya di endpoint berikut:
+
+👉 http://localhost:5000/api-docs
+
 ### Frontend
+
+nextjs 15
 
 ## Teknologi yang Digunakan
