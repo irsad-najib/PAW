@@ -3,9 +3,45 @@ const router = express.Router();
 const Order = require("../models/order.model");
 const Menu = require("../models/menu.model");
 
+/**
+ * @swagger
+ * tags:
+ *   name: Orders
+ *   description: Manajemen pesanan
+ */
+
 // @ route   POST /api/orders
 // @ desc    Membuat pesanan baru
 // @ access  Public (untuk testing sementara)
+
+/**
+ * @swagger
+ * /api/order:
+ *   post:
+ *     summary: Buat order baru
+ *     tags: [Orders]
+ *     security: [ { bearerAuth: [] } ]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [items]
+ *             properties:
+ *               items:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     menuId: { type: string }
+ *                     qty: { type: integer }
+ *     responses:
+ *       201:
+ *         description: Order dibuat
+ *       400:
+ *         description: Data invalid
+ */
 router.post("/", async (req, res) => {
   try {
     const { items, orderDates, deliveryType, deliveryAddress, deliveryTime } =
