@@ -108,6 +108,12 @@ const orderSchema = new mongoose.Schema(
       default: false,
     },
     // bagian integrasi Midtrans
+    orderId: {
+      type: String,
+      unique: true,
+      sparse: true,  // Allow null values but enforce uniqueness when present
+      index: true,
+    },
     midtransToken: {
       type: String,
     },

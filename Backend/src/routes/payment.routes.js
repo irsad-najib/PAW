@@ -49,6 +49,29 @@ const paymentController = require("../controller/payment.controller");
 
 /**
  * @swagger
+ * /api/payment/health:
+ *   get:
+ *     summary: Health check untuk Payment API
+ *     tags: [Payment]
+ *     responses:
+ *       200:
+ *         description: Payment API berjalan normal
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 timestamp:
+ *                   type: string
+ */
+router.get("/health", paymentController.healthCheck);
+
+/**
+ * @swagger
  * /api/payment/create:
  *   post:
  *     summary: Buat transaksi pembayaran baru

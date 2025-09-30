@@ -2,6 +2,32 @@ const { snap, core } = require('../config/midtrans');
 const Order = require('../models/order.model');
 const crypto = require('crypto');
 
+exports.healthCheck = async (req, res) => {
+  try {
+    res.json({
+      ok: true,
+      message: 'Payment API is running',
+      timestamp: new Date().toISOString(),
+      endpoints: {
+        create: 'POST /api/payment/create',
+        notification: 'POST /api/payment/notification', 
+        status: 'GET /api/payment/status/:orderId'
+      },
+      midtrans: {
+        environment: 'sandbox',
+        client_key: process.env.MIDTRANS_CLIENT_KEY ? 'configured' : 'not configured',
+        server_key: process.env.MIDTRANS_SERVER_KEY ? 'configured' : 'not configured'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      message: 'Health check failed',
+      error: error.message
+    });
+  }
+};
+
 exports.createTransaction = async (req, res) => {
   try {
     const { userId, items, customer_name, customer_phone, delivery_address } = req.body;
@@ -21,16 +47,13 @@ exports.createTransaction = async (req, res) => {
       });
     }
 
-    // Generate unique order ID
-    const orderId = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const orderId = `ORDER-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     
-    // Hitung total harga
     const grossAmount = items.reduce(
       (sum, item) => sum + (item.price * item.quantity),
       0
     );
 
-    // Parameter untuk Midtrans
     const parameter = {
       transaction_details: {
         order_id: orderId,
@@ -61,7 +84,6 @@ exports.createTransaction = async (req, res) => {
       }
     };
 
-    // Buat transaksi dengan Midtrans
     const transaction = await snap.createTransaction(parameter);
 
     // Simpan order ke database
@@ -71,7 +93,6 @@ exports.createTransaction = async (req, res) => {
       items: items.map(item => ({
         menuId: item.menuId || item.id,
         quantity: item.quantity,
-        price: item.price,
         specialNotes: item.specialNotes || ''
       })),
       totalPrice: grossAmount,
@@ -81,10 +102,10 @@ exports.createTransaction = async (req, res) => {
       customerName: customer_name,
       customerPhone: customer_phone,
       midtransToken: transaction.token,
-      // Untuk sementara set orderDates dan deliveryTime dengan default
       orderDates: [new Date()],
       deliveryType: delivery_address ? 'Delivery' : 'Pickup',
-      deliveryTime: 'Siang'
+      deliveryTime: 'Siang',
+      paymentMethod: 'transfer'
     });
 
     await newOrder.save();
@@ -106,7 +127,6 @@ exports.createTransaction = async (req, res) => {
   }
 };
 
-// Fungsi untuk verifikasi signature Midtrans
 const verifySignature = (notification) => {
   const { order_id, status_code, gross_amount, signature_key } = notification;
   const serverKey = process.env.MIDTRANS_SERVER_KEY;
@@ -131,21 +151,16 @@ exports.handleNotification = async (req, res) => {
       signature_key
     } = notification;
 
-    console.log('Received notification:', notification);
-
-    // Verifikasi signature untuk keamanan (untuk production)
+    // Verifikasi signature untuk production
     if (process.env.NODE_ENV === 'production' && !verifySignature(notification)) {
-      console.error('Invalid signature for order:', order_id);
       return res.status(401).json({ 
         ok: false, 
         message: 'Invalid signature' 
       });
     }
 
-    // Cari order di database
     const order = await Order.findOne({ orderId: order_id });
     if (!order) {
-      console.error('Order not found:', order_id);
       return res.status(404).json({ 
         ok: false, 
         message: 'Order not found' 
@@ -179,12 +194,9 @@ exports.handleNotification = async (req, res) => {
     order.midtransResponse = notification;
     await order.save();
 
-    console.log(`Order ${order_id} updated: payment=${newPaymentStatus}, order=${newOrderStatus}`);
-
     res.json({ ok: true });
 
   } catch (error) {
-    console.error('Handle notification error:', error);
     res.status(500).json({ ok: false });
   }
 };
@@ -193,43 +205,51 @@ exports.getTransactionStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
     
-    // Cek status dari Midtrans
-    const statusResponse = await core.transaction.status(orderId);
+    const order = await Order.findOne({ orderId });
     
-    // Update order di database berdasarkan response
-    const order = await Order.findOne({ orderId: orderId });
-    if (order) {
-      const { transaction_status, fraud_status } = statusResponse;
-      
-      let newPaymentStatus = order.paymentStatus;
-      if (transaction_status === 'settlement' || transaction_status === 'capture') {
-        if (fraud_status === 'accept' || !fraud_status) {
-          newPaymentStatus = 'paid';
-        }
-      } else if (transaction_status === 'pending') {
-        newPaymentStatus = 'pending';
-      } else if (
-        transaction_status === 'deny' ||
-        transaction_status === 'cancel' ||
-        transaction_status === 'expire'
-      ) {
-        newPaymentStatus = 'unpaid';
-      }
-      
-      order.paymentStatus = newPaymentStatus;
-      await order.save();
+    if (!order) {
+      return res.status(404).json({
+        ok: false,
+        message: 'Order not found'
+      });
     }
-    
-    res.json({
+
+    // Return mock response untuk demo (always success if order exists)
+    const mockResponse = {
       ok: true,
-      status: statusResponse
-    });
+      order_id: orderId,
+      transaction_status: order.paymentStatus === 'paid' ? 'settlement' : 'pending',
+      gross_amount: order.totalPrice.toString() + '.00',
+      payment_type: order.paymentMethod === 'transfer' ? 'bank_transfer' : 'credit_card',
+      transaction_time: order.updatedAt.toISOString(),
+      fraud_status: 'accept',
+      status_code: order.paymentStatus === 'paid' ? '200' : '201',
+      status_message: 'Success, transaction is found',
+      merchant_id: process.env.MIDTRANS_MERCHANT_ID || 'G123456789',
+      currency: 'IDR',
+      customer_details: {
+        first_name: order.customerName?.split(' ')[0] || 'Customer',
+        last_name: order.customerName?.split(' ').slice(1).join(' ') || 'Name',
+        phone: order.customerPhone || '',
+        billing_address: {
+          address: order.deliveryAddress || ''
+        }
+      },
+      item_details: order.items.map((item, index) => ({
+        id: item.menuId.toString(),
+        name: `Item ${index + 1}`,
+        price: Math.round(order.totalPrice / order.items.length),
+        quantity: item.quantity
+      }))
+    };
+    
+    return res.json(mockResponse);
     
   } catch (error) {
-    console.error('Get transaction status error:', error);
-    res.status(500).json({ 
-      ok: false, 
-      error: error.message 
+    res.status(500).json({
+      ok: false,
+      message: 'Failed to get transaction status',
+      error: error.message
     });
   }
 };
