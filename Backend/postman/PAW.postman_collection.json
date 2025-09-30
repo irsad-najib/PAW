@@ -947,7 +947,7 @@
             "url": {
               "raw": "{{baseUrl}}/api/notification/send",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "notification", "send"]
+              "path": ["api", "notify"]
             }
           },
           "event": [
