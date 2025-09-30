@@ -129,3 +129,4 @@ Swagger mencakup endpoint: autentikasi (register/login/Google OAuth), user profi
 Endpoint lain (menu, order, payment, holiday) dapat dilihat di Swagger UI.
 
 ## 9. Link Laporan (Google Drive)
+https://drive.google.com/drive/folders/1n6JWPrD3h9vLz-0bWRTrdK1rlMacNbwB?usp=sharing
