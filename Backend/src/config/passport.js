@@ -7,19 +7,28 @@ passport.use(
     {
       clientID: process.env.googleClientID,
       clientSecret: process.env.googleClientSecret,
-      callbackURL: "/auth/google/callback",
+      callbackURL: "/api/auth/google/callback",
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
         let user = await User.findOne({ googleId: profile.id });
-
         if (!user) {
+          // derive username dari email (bagian sebelum @), fallback random kalau bentrok
+          const baseUsername = (profile.emails?.[0]?.value || profile.id)
+            .split("@")[0]
+            .replace(/[^a-zA-Z0-9_]/g, "_")
+            .toLowerCase();
+          let finalUsername = baseUsername;
+          let counter = 1;
+          while (await User.findOne({ username: finalUsername })) {
+            finalUsername = `${baseUsername}${counter++}`;
+          }
           user = await User.create({
             googleId: profile.id,
             name: profile.displayName,
-            email: profile.emails[0].value,
-            role:
-              profile.emails[0].value === "lala@gmail.com" ? "admin" : "user", // ganti nanti make email siapa buat as admin bu lala
+            email: profile.emails?.[0]?.value?.toLowerCase(),
+            username: finalUsername,
+            role: "user",
           });
         }
 

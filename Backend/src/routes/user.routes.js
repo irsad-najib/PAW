@@ -14,7 +14,7 @@ const router = express.Router();
 
 function generateToken(user) {
   return jwt.sign(
-    { userId: user._id, role: user.Role },
+    { sub: user._id.toString(), role: user.role },
     process.env.JWT_SECRET,
     { expiresIn: "1h" }
   );
@@ -29,7 +29,7 @@ function generateToken(user) {
 
 /**
  * @swagger
- * /api/user/register:
+ * /api/auth/register:
  *   post:
  *     summary: Register user baru
  *     tags: [Users]
@@ -50,29 +50,47 @@ function generateToken(user) {
 router.post("/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
-
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "Email sudah terdaftar" });
+    if (!username || !password) {
+      return res.status(400).json({ error: "username & password wajib" });
     }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({
-      username,
-      email,
-      password: hashedPassword,
+    const usernameExists = await User.findOne({
+      username: username.toLowerCase(),
     });
-
-    await user.save();
-    res.status(201).json({ message: "User berhasil didaftarkan" });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    if (usernameExists) {
+      return res.status(409).json({ error: "Username sudah dipakai" });
+    }
+    if (email) {
+      const emailExists = await User.findOne({ email: email.toLowerCase() });
+      if (emailExists) {
+        return res.status(409).json({ error: "Email sudah terdaftar" });
+      }
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      username: username.toLowerCase(),
+      email: email ? email.toLowerCase() : undefined,
+      password: hashedPassword,
+      name: username,
+    });
+    // Tidak auto login: hanya kembalikan user basic
+    res.status(201).json({
+      message: "User berhasil didaftarkan",
+      user: {
+        id: user._id,
+        userID: user.userID,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
 /**
  * @swagger
- * /api/user/login:
+ * /api/auth/login:
  *   post:
  *     summary: Login (pakai userID atau UserName)
  *     tags: [Users]
@@ -92,58 +110,51 @@ router.post("/register", async (req, res) => {
  */
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: "Email atau password salah" });
+    const { email, username, password } = req.body;
+    if (!password || (!email && !username)) {
+      return res
+        .status(400)
+        .json({ error: "Butuh email atau username + password" });
     }
-
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
-      return res.status(401).json({ message: "Email atau password salah" });
-    }
-
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "24h" }
-    );
-
+    const query = email
+      ? { email: email.toLowerCase() }
+      : { username: username.toLowerCase() };
+    const user = await User.findOne(query);
+    if (!user) return res.status(401).json({ error: "Kredensial salah" });
+    if (!user.password)
+      return res.status(400).json({ error: "Akun ini hanya terhubung Google" });
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) return res.status(401).json({ error: "Kredensial salah" });
+    const token = generateToken(user);
     res.json({
       token,
       user: {
         id: user._id,
+        userID: user.userID,
         username: user.username,
         email: user.email,
         role: user.role,
       },
     });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
 /**
  * @swagger
- * /api/user/logout:
+ * /api/auth/logout:
  *   post:
  *     summary: Logout user
  *     tags: [Users]
  */
-router.post("/logout", (_req, res) => {
-  try {
-    // Jika pakai cookie:
-    res.clearCookie("authToken");
-    res.json({ message: "Logout" });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
-  }
+router.post("/logout", authenticateToken, (_req, res) => {
+  res.json({ message: "Logged out (stateless)" });
 });
 
 /**
  * @swagger
- * /api/user/me:
+ * /api/auth/me:
  *   get:
  *     summary: Profil user (JWT)
  *     tags: [Users]
@@ -151,19 +162,105 @@ router.post("/logout", (_req, res) => {
  */
 router.get("/me", authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId)
+    const user = await User.findById(req.auth.userId)
       .select("-password")
       .lean();
-    if (!user) return res.status(404).json({ message: "Not found" });
+    if (!user) return res.status(404).json({ error: "Not found" });
     res.json(user);
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    res.status(500).json({ error: e.message });
   }
 });
 
 /**
  * @swagger
- * /api/user/google:
+ * /api/auth/password:
+ *   put:
+ *     summary: Ganti password (butuh password lama)
+ *     tags: [Users]
+ *     security: [ { bearerAuth: [] } ]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [oldPassword, newPassword]
+ *             properties:
+ *               oldPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password berhasil diganti
+ *       400:
+ *         description: Validasi gagal
+ *       401:
+ *         description: Password lama salah / unauthorized
+ */
+router.put("/password", authenticateToken, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: "oldPassword & newPassword wajib" });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: "Password minimal 8 karakter" });
+    }
+    // contoh simple policy: harus ada huruf & angka
+    if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      return res
+        .status(400)
+        .json({ error: "Password harus mengandung huruf & angka" });
+    }
+    const user = await User.findById(req.auth.userId);
+    if (!user) return res.status(404).json({ error: "User tidak ditemukan" });
+    if (!user.password) {
+      return res
+        .status(400)
+        .json({
+          error: "Akun ini login via Google, set password lewat proses khusus",
+        });
+    }
+    const valid = await bcrypt.compare(oldPassword, user.password);
+    if (!valid) return res.status(401).json({ error: "Password lama salah" });
+    if (await bcrypt.compare(newPassword, user.password)) {
+      return res
+        .status(400)
+        .json({ error: "Password baru tidak boleh sama dengan yang lama" });
+    }
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    res.json({ message: "Password updated" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Hapus akun (hard delete)
+/**
+ * @swagger
+ * /api/auth/account:
+ *   delete:
+ *     summary: Hapus akun sendiri
+ *     tags: [Users]
+ *     security: [ { bearerAuth: [] } ]
+ */
+router.delete("/account", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.auth.userId);
+    if (!user) return res.status(404).json({ error: "Not found" });
+    await user.deleteOne();
+    res.json({ message: "Akun dihapus" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/google:
  *   get:
  *     summary: Redirect OAuth Google
  *     tags: [Users]
@@ -175,7 +272,7 @@ router.get(
 
 /**
  * @swagger
- * /api/user/google/callback:
+ * /api/auth/google/callback:
  *   get:
  *     summary: Callback OAuth Google
  *     tags: [Users]
@@ -184,7 +281,7 @@ router.get(
   "/google/callback",
   passport.authenticate("google", {
     session: false,
-    failureRedirect: "/api/user/google/fail",
+    failureRedirect: "/api/auth/google/fail",
   }),
   (req, res) => {
     const token = generateToken(req.user);
@@ -193,7 +290,7 @@ router.get(
 );
 
 router.get("/google/fail", (_req, res) => {
-  res.status(401).json({ message: "Google auth failed" });
+  res.status(401).json({ error: "Google auth failed" });
 });
 
 module.exports = router;

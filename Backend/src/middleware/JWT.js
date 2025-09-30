@@ -2,49 +2,29 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
 const authenticateToken = async (req, res, next) => {
-  // Log all cookies untuk debugging
-  console.log("All Cookies:", req.cookies);
   try {
-    const token = req.cookies.authToken;
-
-    // Periksa token existence
-    if (!token || token === "null" || token === "undefined") {
-      console.log("No valid auth token found:", token);
-      return res.status(401).json({
-        isAuthenticated: false,
-        error: "Authentication required",
-      });
+    let token;
+    // Prioritas: Authorization header Bearer
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+    } else if (req.cookies && req.cookies.authToken) {
+      // Fallback cookie (opsional jika nanti ingin cookie mode)
+      token = req.cookies.authToken;
     }
 
-    // Verifikasi token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!token) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
 
-    // Set user info ke request object
-    req.user = {
-      userId: decoded.userId,
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.auth = {
+      userId: decoded.sub || decoded.userId || decoded._id,
       role: decoded.role,
     };
-
-    console.log("Authentication successful for user:", req.user);
-
-    // Kirim response untuk endpoint verify-session
-    if (req.path === "/api/auth/verify-session") {
-      return res.json({
-        isAuthenticated: true,
-        user: {
-          userId: decoded.userId,
-          role: decoded.role,
-        },
-      });
-    }
-
     next();
-  } catch (error) {
-    console.error("Authentication failed:", error.message);
-    return res.status(401).json({
-      isAuthenticated: false,
-      error: "Authentication failed",
-    });
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid or expired token" });
   }
 };
 
