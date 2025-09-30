@@ -50,13 +50,17 @@ PAW/
 │       │   ├── menu.model.js
 │       │   ├── order.model.js
 │       │   └── user.model.js
-│       └── routes/
-│           ├── holiday.routes.js
-│           ├── menu.routes.js
-│           ├── notification.routes.js
-│           ├── order.routes.js
-│           ├── payment.routes.js
-│           └── user.routes.js
+│       ├── routes/
+│       |   ├── holiday.routes.js
+│       |   ├── menu.routes.js
+│       |   ├── notification.routes.js
+│       |   ├── order.routes.js
+│       |   ├── payment.routes.js
+│       |   └── user.routes.js
+│       └── test/
+│           ├── cleanup-db.js
+│           ├── generate-test-data-midtrans.js
+│           └── test-midtrans.js
 ├── frontend/
 └── README.md
 ```
