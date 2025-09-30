@@ -55,7 +55,7 @@ exports.createTransaction = async (req, res) => {
         pending: `${process.env.FRONTEND_URL}/payment/pending`
       },
       expiry: {
-        start_time: new Date().toISOString(),
+        start_time: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Jakarta' }) + ' +0700',
         unit: "minutes",
         duration: 30
       }
