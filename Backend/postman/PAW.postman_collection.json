@@ -1,0 +1,969 @@
+{
+  "info": {
+    "name": "PAW",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Koleksi API PAW: Health (status service), Auth (registrasi, login, manajemen akun & OAuth), Menu (CRUD & ketersediaan), Orders (split multi-day dengan groupId & pembayaran cash/transfer), Holidays (hari libur), Payment (Midtrans sandbox flow sederhana), Notification (kirim pesan via Fonnte)."
+  },
+  "item": [
+    {
+      "name": "Health",
+      "description": "Cek status server / heartbeat sederhana.",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has status field', () => pm.expect(json).to.have.property('status'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Autentikasi & akun: register, login (email/username), profil (me), ubah password, logout stateless, delete account, Google OAuth (manual flow).",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"tester001\",\n  \"email\": \"tester001@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Created 201 / Conflict 409', () => pm.expect([201,409]).to.include(pm.response.code));",
+                  "if(pm.response.code===201){ const j=pm.response.json(); pm.environment.set('registeredUsername', j.user.username); pm.environment.set('registeredEmail', j.user.email); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (Email)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{registeredEmail}}\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login 200', () => pm.response.to.have.status(200));",
+                  "const j=pm.response.json(); pm.environment.set('authToken', j.token); pm.environment.set('username', j.user.username);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (Username)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{registeredUsername}}\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login 200', () => pm.response.to.have.status(200));",
+                  "const j=pm.response.json(); pm.environment.set('authToken', j.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "me"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 401', () => pm.expect([200,401]).to.include(pm.response.code));",
+                  "if(pm.response.code===200){ const j=pm.response.json(); pm.expect(j).to.have.property('username'); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"Password123!\",\n  \"newPassword\": \"Password456!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "password"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 400 / 401', () => pm.expect([200,400,401]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout (Stateless)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "logout"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Logout 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Account",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/account",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "account"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 401 / 404', () => pm.expect([200,401,404]).to.include(pm.response.code));",
+                  "if(pm.response.code===200){ pm.environment.unset('authToken'); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Google OAuth (Manual)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/google",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "google"]
+            }
+          },
+          "description": "Buka di browser untuk menjalankan flow Google OAuth. Token final perlu di-handle di backend callback."
+        }
+      ]
+    },
+    {
+      "name": "Menu",
+      "description": "Manajemen menu harian: create, list, detail, update penuh/parsial, toggle availability, delete. Field date dipakai untuk derivasi orderDates pada Orders.",
+      "item": [
+        {
+          "name": "List Menu",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/menu?page=1&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "menu"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "5" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const j=pm.response.json();",
+                  "pm.test('Paging fields', () => { pm.expect(j).to.have.property('items'); pm.expect(j).to.have.property('total'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Menu (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nasi Goreng Spesial\",\n  \"price\": 25000,\n  \"description\": \"Porsi jumbo pedas\",\n  \"stock\": 10,\n  \"date\": \"2025-09-30\",\n  \"isAvailable\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/menu",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "menu"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const j=pm.response.json(); pm.environment.set('menuId', j._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Menu By ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/menu/{{menuId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "menu", "{{menuId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 404', () => pm.expect([200,404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Menu (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nasi Goreng Spesial XL\",\n  \"price\": 30000,\n  \"description\": \"Size XL pedas\",\n  \"stock\": 8,\n  \"isAvailable\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/menu/{{menuId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "menu", "{{menuId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 404', () => pm.expect([200,404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Partial Update Menu (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"stock\": 15\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/api/menu/{{menuId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "menu", "{{menuId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 404', () => pm.expect([200,404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Toggle Availability",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/menu/{{menuId}}/toggle",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "menu", "{{menuId}}", "toggle"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 404', () => pm.expect([200,404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Menu",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/menu/{{menuId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "menu", "{{menuId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 404', () => pm.expect([200,404]).to.include(pm.response.code));",
+                  "if(pm.response.code===200){ pm.environment.unset('menuId'); }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Order",
+      "description": "Order dengan auto-split per tanggal (multi-day => beberapa dokumen). groupId diberikan untuk semua multi-day (cash=unpaid, transfer=pending). Admin dapat set pembayaran per order atau per group. Termasuk status lifecycle dan cancel restore stok.",
+      "item": [
+        {
+          "name": "Create Order (cash)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"menuId\": \"{{menuId}}\", \"quantity\": 2 }\n  ],\n  \"deliveryType\": \"Pickup\",\n  \"deliveryTime\": \"Pagi\",\n  \"paymentMethod\": \"cash\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const j=pm.response.json(); pm.environment.set('orderId', j.order._id);",
+                  "pm.test('orderId stored', () => pm.expect(pm.environment.get('orderId')).to.exist);",
+                  "pm.test('orderDates derived', () => { pm.expect(j.order).to.have.property('orderDates'); pm.expect(j.order.orderDates).to.be.an('array'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Order (transfer single-day)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"menuId\": \"{{menuId}}\", \"quantity\": 1 }\n  ],\n  \"deliveryType\": \"Pickup\",\n  \"deliveryTime\": \"Siang\",\n  \"paymentMethod\": \"transfer\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Order or Orders structure', () => { pm.expect(j).to.be.an('object'); });",
+                  "if(j.order){ pm.test('Single order transfer starts pending', () => pm.expect(j.order.paymentStatus).to.eql('pending')); pm.environment.set('orderTransferId', j.order._id); }",
+                  "if(j.orders){ pm.test('Unexpected array for single-day test should not happen', () => pm.expect(j.orders.length).to.eql(1)); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Multi-day Order (transfer grouped)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"menuId\": \"{{menuId}}\", \"quantity\": 1 },\n    { \"menuId\": \"{{menuIdSecond}}\", \"quantity\": 2 }\n  ],\n  \"deliveryType\": \"Pickup\",\n  \"deliveryTime\": \"Pagi\",\n  \"paymentMethod\": \"transfer\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Has groupId', () => pm.expect(j).to.have.property('groupId'));",
+                  "pm.test('Orders array exists', () => pm.expect(j.orders).to.be.an('array').that.is.not.empty);",
+                  "pm.test('All orders pending (transfer group awaiting payment)', () => j.orders.forEach(o => pm.expect(o.paymentStatus).to.eql('pending')));",
+                  "pm.environment.set('groupId', j.groupId);",
+                  "pm.environment.set('multiDayFirstOrderId', j.orders[0]._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Multi-day Order (cash grouped)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"menuId\": \"{{menuId}}\", \"quantity\": 1 },\n    { \"menuId\": \"{{menuIdSecond}}\", \"quantity\": 1 }\n  ],\n  \"deliveryType\": \"Pickup\",\n  \"deliveryTime\": \"Siang\",\n  \"paymentMethod\": \"cash\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('Has groupId', () => pm.expect(j).to.have.property('groupId'));",
+                  "pm.test('Orders array exists', () => pm.expect(j.orders).to.be.an('array').that.is.not.empty);",
+                  "pm.test('All orders unpaid (cash group)', () => j.orders.forEach(o => pm.expect(o.paymentStatus).to.eql('unpaid')));",
+                  "pm.environment.set('cashGroupId', j.groupId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin Set Group Payment Paid",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"markPaid\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/group/{{groupId}}/payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "group", "{{groupId}}", "payment"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 or 404 or 400', () => pm.expect([200,400,404]).to.include(pm.response.code));",
+                  "if(pm.response.code===200){ const j=pm.response.json(); pm.test('Orders array updated', () => pm.expect(j.orders).to.be.an('array').that.is.not.empty); j.orders.forEach(o => pm.expect(o.paymentStatus).to.eql('paid')); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin Set Single Order Payment Paid",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"markPaid\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/payment",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{orderId}}", "payment"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 or 404 or 400', () => pm.expect([200,400,404]).to.include(pm.response.code));",
+                  "if(pm.response.code===200){ const j=pm.response.json(); pm.test('Single order paid', () => pm.expect(j.order.paymentStatus).to.eql('paid')); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List My Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders?page=1&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "5" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const j=pm.response.json();",
+                  "pm.test('paging fields', () => { pm.expect(j).to.have.property('items'); pm.expect(j).to.have.property('total'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Order By ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{orderId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 404', () => pm.expect([200,404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin Update Status -> processing",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderStatus\": \"processing\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{orderId}}", "status"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 403 / 404', () => pm.expect([200,403,404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin Update Status -> completed",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderStatus\": \"completed\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{orderId}}", "status"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 403 / 404', () => pm.expect([200,403,404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin Cancel Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders", "{{orderId}}", "cancel"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 400 / 403 / 404', () => pm.expect([200,400,403,404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Holidays",
+      "description": "Manajemen hari libur (referensi untuk penjadwalan / penutupan layanan). GET list & POST create (admin).",
+      "item": [
+        {
+          "name": "List Holidays",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/holidays",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "holidays"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const arr = pm.response.json(); pm.test('Array response', () => pm.expect(arr).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Holiday",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Libur Nasional Test\",\n  \"date\": \"2025-12-25\",\n  \"description\": \"Test insert\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/holidays",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "holidays"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 / 400', () => pm.expect([201,400]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Payment",
+      "description": "Integrasi Midtrans sederhana: create transaction (token & redirect_url) dan simulate notification (settlement). In-memory store sementara.",
+      "item": [
+        {
+          "name": "Create Payment Transaction",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_name\": \"Tester\",\n  \"customer_phone\": \"08123456789\",\n  \"items\": [ { \"id\": \"SKU1\", \"name\": \"Produk A\", \"price\": 10000, \"quantity\": 2 } ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payment/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payment", "create"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 400', () => pm.expect([200,400]).to.include(pm.response.code));",
+                  "if(pm.response.code===200){ const j=pm.response.json(); pm.environment.set('paymentOrderId', j.order_id); pm.environment.set('midtransToken', j.token); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payment Notification (simulate settlement)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{paymentOrderId}}\",\n  \"transaction_status\": \"settlement\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payment/notification",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payment", "notification"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Payment Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/payment/status/{{paymentOrderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payment", "status", "{{paymentOrderId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('ok true', () => pm.expect(j.ok).to.be.true);",
+                  "pm.test('Has status.transaction_status', () => pm.expect(j.status).to.have.property('transaction_status'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Notification",
+      "description": "Kirim notifikasi via Fonnte (WhatsApp). Endpoint /send menerima tipe pesan dasar (order_success, payment_success).",
+      "item": [
+        {
+          "name": "Send Notification (Fonnte)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"087850846690\",\n  \"type\": \"order_success\",\n  \"order_id\": \"TEST123\",\n  \"name\": \"User Satu\",\n  \"amount\": 50000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/notification/send",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "notification", "send"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 / 500', () => pm.expect([200,500]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [{ "key": "baseUrl", "value": "http://localhost:5000" }]
+}

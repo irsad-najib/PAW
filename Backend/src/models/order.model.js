@@ -10,10 +10,12 @@ const orderItemSchema = new mongoose.Schema({
   quantity: {
     type: Number,
     required: true,
+    min: 1,
   },
   specialNotes: {
     type: String,
     default: "",
+    trim: true,
   },
 });
 
@@ -24,16 +26,38 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
     },
-    orderId: {
+    // Kelompok pembayaran multi-day
+    groupId: {
       type: String,
-      required: true,
-      unique: true,
+      index: true,
+      default: null,
     },
-    items: [orderItemSchema],
+    isGroupMaster: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    items: {
+      type: [orderItemSchema],
+      validate: [
+        function (val) {
+          return Array.isArray(val) && val.length > 0;
+        },
+        "Items required",
+      ],
+    },
+    // Multi tanggal (sesuai klarifikasi user)
     orderDates: {
       type: [Date],
       required: true,
+      validate: [
+        function (val) {
+          return Array.isArray(val) && val.length > 0;
+        },
+        "Minimal 1 tanggal",
+      ],
     },
     deliveryType: {
       type: String,
@@ -45,25 +69,43 @@ const orderSchema = new mongoose.Schema(
       required: function () {
         return this.deliveryType === "Delivery";
       },
+      trim: true,
     },
     deliveryTime: {
       type: String,
       enum: ["Pagi", "Siang", "Sore"],
       required: true,
     },
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "transfer"],
+      required: true,
+    },
+    paymentReference: {
+      type: String,
+      default: null,
+      index: true,
+    },
     totalPrice: {
       type: Number,
       required: true,
+      min: 0,
     },
     paymentStatus: {
       type: String,
       enum: ["pending", "paid", "unpaid"],
       default: "unpaid",
+      index: true,
     },
     orderStatus: {
       type: String,
       enum: ["pending", "processing", "completed", "cancelled"],
       default: "pending",
+      index: true,
+    },
+    stockRestored: {
+      type: Boolean,
+      default: false,
     },
     // bagian integrasi Midtrans
     midtransToken: {
@@ -83,5 +125,7 @@ const orderSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+orderSchema.index({ userId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Order", orderSchema);

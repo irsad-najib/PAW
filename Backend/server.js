@@ -14,6 +14,63 @@ const paymentRoutes = require("./src/routes/payment.routes");
 const notificationRoutes = require("./src/routes/notification.routes");
 require("./src/config/passport");
 
+async function ensureAdmin() {
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminUsername = process.env.ADMIN_USERNAME;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminEmail || !adminUsername || !adminPassword) {
+      return; // tidak ada konfigurasi admin
+    }
+    const User = require("./src/models/user.model");
+    const existing = await User.findOne({
+      $or: [
+        { email: adminEmail.toLowerCase() },
+        { username: adminUsername.toLowerCase() },
+      ],
+    });
+    const bcrypt = require("bcryptjs");
+    if (!existing) {
+      const hash = await bcrypt.hash(adminPassword, 10);
+      await User.create({
+        username: adminUsername.toLowerCase(),
+        email: adminEmail.toLowerCase(),
+        password: hash,
+        role: "admin",
+        name: adminUsername,
+      });
+      console.log("✅ Admin user created:", adminUsername);
+    } else if (existing.role !== "admin") {
+      existing.role = "admin";
+      if (!existing.password) {
+        existing.password = await bcrypt.hash(adminPassword, 10);
+      }
+      await existing.save();
+      console.log("✅ Elevated existing user to admin:", existing.username);
+    } else {
+      // Sudah admin, skip
+    }
+  } catch (e) {
+    console.error("Failed ensuring admin:", e.message);
+  }
+}
+
+async function cleanupLegacyUserIndexes() {
+  try {
+    const User = require("./src/models/user.model");
+    const indexes = await User.collection.indexes();
+    const legacy = indexes.filter((i) => i.name === "UserName_1");
+    for (const idx of legacy) {
+      console.log("🧹 Dropping legacy index:", idx.name);
+      await User.collection.dropIndex(idx.name);
+    }
+    // Sinkronkan index baru sesuai schema sekarang
+    await User.syncIndexes();
+  } catch (e) {
+    console.warn("Index cleanup warning:", e.message);
+  }
+}
+
 const app = express();
 connectDB();
 
@@ -53,7 +110,7 @@ app.post("/api/notify", async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
-app.use("/api/menus", menuRoutes);
+app.use("/api/menu", menuRoutes);
 app.use("/api/holidays", holidayRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/notifications", notificationRoutes);
@@ -69,4 +126,5 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
+  cleanupLegacyUserIndexes().then(() => ensureAdmin());
 });
