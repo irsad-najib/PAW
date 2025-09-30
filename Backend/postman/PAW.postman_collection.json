@@ -823,7 +823,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Libur Nasional Test\",\n  \"date\": \"2025-12-25\",\n  \"description\": \"Test insert\"\n}"
+              "raw": "{\n  \"startDate\": \"2025-12-31\",\n  \"endDate\": \"2026-01-01\",\n  \"reason\": \"Libur Tahun Baru\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/holidays",
@@ -942,7 +942,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"phone\": \"087850846690\",\n  \"type\": \"order_success\",\n  \"order_id\": \"TEST123\",\n  \"name\": \"User Satu\",\n  \"amount\": 50000\n}"
+              "raw": "{\n  \"target\": \"087850846690\",\n  \"message\": \"order_success\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/notification/send",

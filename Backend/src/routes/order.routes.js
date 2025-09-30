@@ -536,17 +536,46 @@ router.patch(
       if (!orders.length) {
         return res.status(404).json({ message: "Group not found" });
       }
-      // Pastikan memang transfer
-      const invalid = orders.find((o) => o.paymentMethod !== "transfer");
-      if (invalid) {
+      // Validasi konsistensi paymentMethod (tidak boleh campuran cash & transfer)
+      const methodSet = new Set(orders.map((o) => o.paymentMethod));
+      if (methodSet.size !== 1) {
         return res
           .status(400)
-          .json({ message: "Group contains non-transfer order" });
+          .json({ message: "Mixed paymentMethod in group not allowed" });
       }
-      await Order.updateMany({ groupId }, { $set: { paymentStatus: "paid" } });
+      const method = [...methodSet][0]; // 'cash' atau 'transfer'
+
+      // Cek apakah sudah paid semua (idempotent safety)
+      const unpaid = orders.filter((o) => o.paymentStatus !== "paid");
+      if (!unpaid.length) {
+        return res.json({
+          message: "Group already fully paid",
+          groupId,
+          orders,
+        });
+      }
+
+      // Transisi diperbolehkan:
+      // - cash: unpaid -> paid (konfirmasi manual admin)
+      // - transfer: pending -> paid (konfirmasi manual / verifikasi)
+      // Order dalam status lain (completed/cancelled) dibiarkan saja (hanya ubah paymentStatus jika belum paid)
+      const allowedFrom = method === "cash" ? ["unpaid"] : ["pending"];
+      const invalidState = unpaid.find(
+        (o) => !allowedFrom.includes(o.paymentStatus)
+      );
+      if (invalidState) {
+        return res.status(400).json({
+          message: `Cannot mark group paid: found order with paymentStatus=${invalidState.paymentStatus} (method=${method})`,
+        });
+      }
+
+      await Order.updateMany(
+        { groupId, paymentStatus: { $in: allowedFrom } },
+        { $set: { paymentStatus: "paid" } }
+      );
       const refreshed = await Order.find({ groupId }).sort({ createdAt: 1 });
       return res.json({
-        message: "Group payment set to paid",
+        message: `Group payment set to paid (${method})`,
         groupId,
         orders: refreshed,
       });

@@ -14,7 +14,11 @@ const router = express.Router();
 
 function generateToken(user) {
   return jwt.sign(
-    { sub: user._id.toString(), role: user.role },
+    {
+      sub: user._id.toString(),
+      role: user.role,
+      tv: user.tokenVersion || 0, // token version for invalidation
+    },
     process.env.JWT_SECRET,
     { expiresIn: "1h" }
   );
@@ -149,7 +153,17 @@ router.post("/login", async (req, res) => {
  *     tags: [Users]
  */
 router.post("/logout", authenticateToken, (_req, res) => {
-  res.json({ message: "Logged out (stateless)" });
+  // With tokenVersion approach, true invalidation happens by incrementing tokenVersion.
+  res.json({ message: "Logged out (client should discard token)" });
+});
+// Optional: server-side invalidate (bump tokenVersion) endpoint
+router.post("/logout/invalidate", authenticateToken, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.auth.userId, { $inc: { tokenVersion: 1 } });
+    res.json({ message: "Logged out & tokens invalidated" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 /**
@@ -215,6 +229,7 @@ router.put("/password", authenticateToken, async (req, res) => {
         .json({ error: "Password harus mengandung huruf & angka" });
     }
     const user = await User.findById(req.auth.userId);
+      user.tokenVersion = (user.tokenVersion || 0) + 1; // invalidate existing tokens
     if (!user) return res.status(404).json({ error: "User tidak ditemukan" });
     if (!user.password) {
       return res
