@@ -903,6 +903,31 @@
               }
             }
           ]
+        },
+        {
+          "name": "Get Payment Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/payment/status/{{paymentOrderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "payment", "status", "{{paymentOrderId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('ok true', () => pm.expect(j.ok).to.be.true);",
+                  "pm.test('Has status.transaction_status', () => pm.expect(j.status).to.have.property('transaction_status'));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
