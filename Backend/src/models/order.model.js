@@ -25,6 +25,11 @@ const orderSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    orderId: {
+      type: String,
+      required: true,
+      unique: true,
+    },
     items: [orderItemSchema],
     orderDates: {
       type: [Date],
@@ -59,6 +64,19 @@ const orderSchema = new mongoose.Schema(
       type: String,
       enum: ["pending", "processing", "completed", "cancelled"],
       default: "pending",
+    },
+    // bagian integrasi Midtrans
+    midtransToken: {
+      type: String,
+    },
+    midtransResponse: {
+      type: mongoose.Schema.Types.Mixed,
+    },
+    customerName: {
+      type: String,
+    },
+    customerPhone: {
+      type: String,
     },
   },
   {
