@@ -93,14 +93,14 @@ const orderSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ["pending", "paid", "unpaid"],
+      enum: ["pending", "paid", "unpaid", "refunded"],
       default: "unpaid",
       index: true,
     },
     orderStatus: {
       type: String,
-      enum: ["pending", "processing", "completed", "cancelled"],
-      default: "pending",
+      enum: ["accepted", "processing", "ready", "completed", "cancelled"],
+      default: "accepted",
       index: true,
     },
     stockRestored: {
@@ -111,7 +111,7 @@ const orderSchema = new mongoose.Schema(
     orderId: {
       type: String,
       unique: true,
-      sparse: true,  // Allow null values but enforce uniqueness when present
+      sparse: true, // Allow null values but enforce uniqueness when present
       index: true,
     },
     midtransToken: {
