@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ArrowLeft, Plus, Minus, MapPin, Clock, CreditCard, Banknote, ShoppingBag, AlertCircle, Check } from 'lucide-react';
+import { createPaymentTransaction, loadMidtransScript, PaymentRequest } from '@/lib/payment';
 
 interface MenuItem {
   id: string;
@@ -66,6 +67,8 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('cash');
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
 
   const updateQuantity = (id: string, newQuantity: number) => {
     if (newQuantity < 1) return;
@@ -100,12 +103,62 @@ export default function CheckoutPage() {
 
   const handleSubmitOrder = async () => {
     setIsLoading(true);
-    
-    // Simulasi API call
-    setTimeout(() => {
+    setPaymentError(null);
+
+    try {
+      if (paymentMethod === 'transfer') {
+        // Midtrans integration for transfer payment
+        const paymentData: PaymentRequest = {
+          userId: 'demo-user-id', // In real app, get from auth context
+          customer_name: customerInfo.name,
+          customer_phone: customerInfo.phone,
+          delivery_address: deliveryInfo.type === 'delivery' ? deliveryInfo.address : undefined,
+          items: cartItems.map(item => ({
+            menuId: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            specialNotes: item.specialNotes
+          }))
+        };
+
+        const paymentResponse = await createPaymentTransaction(paymentData);
+        setCurrentOrderId(paymentResponse.order_id);
+
+        // Load Midtrans script and open payment modal
+        await loadMidtransScript(paymentResponse.client_key);
+        
+        window.snap?.pay(paymentResponse.token, {
+          onSuccess: function(result) {
+            console.log('Payment success:', result);
+            setShowSuccess(true);
+          },
+          onPending: function(result) {
+            console.log('Payment pending:', result);
+            // You can show pending status
+            alert('Pembayaran pending. Silakan selesaikan pembayaran Anda.');
+          },
+          onError: function(result) {
+            console.log('Payment error:', result);
+            setPaymentError('Pembayaran gagal. Silakan coba lagi.');
+          },
+          onClose: function() {
+            console.log('Payment popup closed');
+          }
+        });
+      } else {
+        // Cash payment - just create order without payment processing
+        // In real implementation, you'd call your orders API
+        setTimeout(() => {
+          setShowSuccess(true);
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Order submission error:', error);
+      setPaymentError(error instanceof Error ? error.message : 'Terjadi kesalahan saat memproses pesanan');
+    } finally {
       setIsLoading(false);
-      setShowSuccess(true);
-    }, 2000);
+    }
   };
 
   const isFormValid = () => {
@@ -362,7 +415,7 @@ export default function CheckoutPage() {
                   ].map((option) => (
                     <button
                       key={option.value}
-                      onClick={() => setDeliveryInfo(prev => ({...prev, time: option.value as any}))}
+                      onClick={() => setDeliveryInfo(prev => ({...prev, time: option.value as 'pagi' | 'siang' | 'sore'}))}
                       className={`p-3 rounded-lg border text-center transition-colors ${
                         deliveryInfo.time === option.value
                           ? 'border-primary bg-green-50 text-primary'
@@ -430,12 +483,14 @@ export default function CheckoutPage() {
               
               {paymentMethod === 'transfer' && (
                 <div className="mt-4 p-4 bg-secondary rounded-lg">
-                  <h4 className="font-semibold text-dark mb-2">Informasi Rekening:</h4>
+                  <h4 className="font-semibold text-dark mb-2">Pembayaran Online:</h4>
                   <div className="text-sm text-dark space-y-1">
-                    <div>Bank BCA: 1234567890</div>
-                    <div>a.n. Bu Lala Katering</div>
+                    <div>✓ Credit Card / Debit Card</div>
+                    <div>✓ Bank Transfer (BCA, BNI, BRI, Mandiri)</div>
+                    <div>✓ E-Wallet (GoPay, OVO, DANA)</div>
+                    <div>✓ Virtual Account</div>
                     <div className="text-xs text-gray-600 mt-2">
-                      *Konfirmasi pembayaran akan dikirim via WhatsApp
+                      *Powered by Midtrans - Pembayaran aman dan terpercaya
                     </div>
                   </div>
                 </div>
@@ -493,7 +548,7 @@ export default function CheckoutPage() {
               <button
                 onClick={handleSubmitOrder}
                 disabled={!isFormValid() || isLoading}
-                className={`w-full py-4 rounded-xl font-semibold text-white transition-all ${
+                className={`w-full py-4 rounded-xl font-semibold text-black transition-all ${
                   isFormValid() && !isLoading
                     ? 'bg-primary hover:bg-primary-dark hover:shadow-lg transform hover:-translate-y-0.5'
                     : 'bg-gray-400 cursor-not-allowed'
@@ -513,6 +568,15 @@ export default function CheckoutPage() {
                 <div className="mt-3 text-sm text-danger flex items-center">
                   <AlertCircle className="w-4 h-4 mr-1" />
                   Mohon lengkapi semua field yang wajib diisi
+                </div>
+              )}
+
+              {paymentError && (
+                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="text-sm text-danger flex items-center">
+                    <AlertCircle className="w-4 h-4 mr-2" />
+                    {paymentError}
+                  </div>
                 </div>
               )}
 
