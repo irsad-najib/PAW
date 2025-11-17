@@ -36,3 +36,36 @@ export const getWeekDates = (offset = 0) => {
 export const formatDateISO = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
+
+export function formatDateID(value?: string | Date | null): string {
+  const d = value ? new Date(value) : new Date();
+  if (isNaN(d.getTime())) return "-";
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
+const MONTHS_ID = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+
+export function formatDateLongID(value?: string | Date | null): string {
+  const d = value ? new Date(value) : new Date();
+  if (isNaN(d.getTime())) return "-";
+  const day = String(d.getDate()).padStart(2, "0");
+  const monthName = MONTHS_ID[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day} ${monthName} ${year}`;
+}

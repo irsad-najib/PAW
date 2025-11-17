@@ -6,6 +6,7 @@ import {
   OrderStatusBadge,
   PaymentStatusBadge,
   ORDER_STATUS_LABELS,
+  PAYMENT_STATUS_LABELS,
 } from "./order-controls/OrderBadges";
 import {
   OrderActionButton,
@@ -349,11 +350,11 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
               <div>
                 <p>
                   <span className="font-semibold">Pembayaran:</span>{" "}
-                  {orderDetailModal.paymentStatus}
+                  {PAYMENT_STATUS_LABELS[orderDetailModal.paymentStatus]}
                 </p>
                 <p>
                   <span className="font-semibold">Status Order:</span>{" "}
-                  {orderDetailModal.orderStatus}
+                  {ORDER_STATUS_LABELS[orderDetailModal.orderStatus]}
                 </p>
               </div>
               <div>

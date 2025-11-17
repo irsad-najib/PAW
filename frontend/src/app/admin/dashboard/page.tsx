@@ -13,6 +13,7 @@ import {
   DASHBOARD_ORDERS,
   TOMORROW_MEAL_DATA,
 } from "@/lib/data";
+import { formatDateLongID } from "@/lib/utils";
 
 export default function DashboardPage() {
   const currentDate = useCurrentDate();
@@ -53,7 +54,7 @@ export default function DashboardPage() {
 
       <div className="bg-white p-4 md:p-6 rounded-xl shadow-lg mb-8">
         <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-4">
-          Ringkasan Pesanan Hari Ini (10 November)
+          Ringkasan Pesanan Hari Ini ({formatDateLongID(new Date())})
         </h2>
         <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
           <ProductionSummary
@@ -65,7 +66,7 @@ export default function DashboardPage() {
 
       <div className="bg-white p-4 md:p-6 rounded-xl shadow-lg mb-8">
         <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-4">
-          Ringkasan Pesanan Besok (Perencanaan)
+          Ringkasan Pesanan Besok ({formatDateLongID(new Date(Date.now() + 24 * 60 * 60 * 1000))})
         </h2>
         <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
           <table className="w-full min-w-[600px] text-left">

@@ -8,11 +8,12 @@ import {
   OrderPaymentStatus,
   OrderStatus,
 } from "@/lib/types";
-import { formatRupiah } from "@/lib/utils";
+import { formatRupiah, formatDateID } from "@/lib/utils";
 import {
   OrderStatusBadge,
   PaymentStatusBadge,
   ORDER_STATUS_LABELS,
+  PAYMENT_STATUS_LABELS,
 } from "./order-controls/OrderBadges";
 import { OrderActionButton } from "./order-controls/OrderActionButtons";
 import { PaymentScopeModal } from "./order-controls/PaymentScopeModal";
@@ -464,7 +465,7 @@ export default function OrdersDetailTable({
               <div>
                 <p>
                   <span className="font-semibold">Pembayaran:</span>{" "}
-                  {orderDetailModal.paymentStatus}
+                  {PAYMENT_STATUS_LABELS[orderDetailModal.paymentStatus]}
                 </p>
                 <p>
                   <span className="font-semibold">Status Order:</span>{" "}

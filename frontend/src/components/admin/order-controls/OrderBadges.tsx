@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   accepted: "Order Masuk",
   processing: "Diproses",
-  ready: "Ready",
+  ready: "Siap",
   completed: "Selesai",
   cancelled: "Dibatalkan",
 };
