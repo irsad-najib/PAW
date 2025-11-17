@@ -1,26 +1,108 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import StatCard from "@/components/admin/StatCard";
 import ProductionSummary from "@/components/admin/ProductionSummary";
 import VerificationTable from "@/components/admin/VerificationTable";
 import NotesModal from "@/components/admin/NotesModal";
 import AdminPageHeader from "@/components/admin/AdminPageHeader";
 import { useCurrentDate } from "@/hooks/UseCurrentDate";
-import {
-  DASHBOARD_STATS,
-  TODAY_MEAL_DATA,
-  DASHBOARD_ORDERS,
-  TOMORROW_MEAL_DATA,
-} from "@/lib/data";
+import { fetchAdminOrders, fetchOrderSummary } from "@/lib/api";
+import { Order } from "@/lib/types";
 import { formatDateLongID } from "@/lib/utils";
 
 export default function DashboardPage() {
   const currentDate = useCurrentDate();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [stat, setStat] = useState({
+    totalOrdersToday: 0,
+    totalRevenue: 0,
+    totalUnpaid: 0,
+  });
+  type MealItem = { name: string; portions: number; notes: string[]; stock?: number };
+  type MealGroup = { mealTime: string; totalPortions: number; items: MealItem[] };
+  const [todayMeal, setTodayMeal] = useState<MealGroup[]>([]);
+  const [tomorrowMeal, setTomorrowMeal] = useState<MealGroup[]>([]);
   const [notesModal, setNotesModal] = useState<{
     title: string;
     notes: string[];
   } | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoadingOrders(true);
+    fetchAdminOrders({ limit: 50 })
+      .then((res) => {
+        if (!isMounted) return;
+        setOrders(res.items || []);
+      })
+      .catch((err) => {
+        console.warn("Gagal memuat pesanan dashboard:", err.message);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingOrders(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const todayISO = new Date().toISOString().split("T")[0];
+    const tomorrowISO = new Date(Date.now() + 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0];
+
+    fetchOrderSummary(todayISO)
+      .then((res) => {
+        if (!res) return;
+        setStat((prev) => ({
+          totalOrdersToday: res.totalOrders ?? prev.totalOrdersToday,
+          totalRevenue: res.revenuePaid ?? prev.totalRevenue,
+          totalUnpaid: res.totalUnpaidCash ?? prev.totalUnpaid,
+        }));
+        if (Array.isArray(res.byMealTime) && res.byMealTime.length) {
+          setTodayMeal(
+            res.byMealTime.map((m) => ({
+              mealTime: m.mealTime,
+              totalPortions: m.totalPortions,
+              items: (m.items || []).map((it) => ({
+                name: it.name,
+                portions: it.portions,
+                notes: it.notes ?? [],
+              })),
+            }))
+          );
+        }
+      })
+      .catch(() => {
+        /* fallback dummy */
+      });
+
+    fetchOrderSummary(tomorrowISO)
+      .then((res) => {
+        if (!res || !Array.isArray(res.byMealTime)) return;
+        if (res.byMealTime.length) {
+          setTomorrowMeal(
+            res.byMealTime.map((m) => ({
+              mealTime: m.mealTime,
+              totalPortions: m.totalPortions,
+              items: (m.items ?? []).map((it) => ({
+                name: it.name,
+                portions: it.portions,
+                notes: Array.isArray(it.notes) ? it.notes : it.notes ? [it.notes] : [],
+                stock: typeof (it as any).stock === "number" ? (it as any).stock : undefined,
+              })),
+            }))
+          );
+        }
+      })
+      .catch(() => {
+        /* fallback dummy */
+      });
+  }, []);
 
   return (
     <div>
@@ -37,17 +119,17 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <StatCard
           title="Total Pesanan Hari Ini"
-          value={`${DASHBOARD_STATS.totalOrdersToday} Pesanan`}
+          value={`${stat.totalOrdersToday} Pesanan`}
           borderColor="border-primary"
         />
         <StatCard
           title="Pendapatan Hari Ini (Lunas)"
-          value={`Rp ${DASHBOARD_STATS.totalRevenue.toLocaleString("id-ID")}`}
+          value={`Rp ${stat.totalRevenue.toLocaleString("id-ID")}`}
           borderColor="border-green-500"
         />
         <StatCard
           title="Belum Lunas (Cash)"
-          value={`Rp ${DASHBOARD_STATS.totalUnpaid.toLocaleString("id-ID")}`}
+          value={`Rp ${stat.totalUnpaid.toLocaleString("id-ID")}`}
           borderColor="border-yellow-400"
         />
       </div>
@@ -58,7 +140,7 @@ export default function DashboardPage() {
         </h2>
         <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
           <ProductionSummary
-            mealData={TODAY_MEAL_DATA}
+            mealData={todayMeal}
             onOpenNotes={(label, notes) => setNotesModal({ title: label, notes })}
           />
         </div>
@@ -79,7 +161,7 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm text-gray-800">
-              {TOMORROW_MEAL_DATA[0]?.items.map((item, idx) => (
+              {tomorrowMeal.flatMap((meal) => meal.items || []).map((item, idx) => (
                 <tr key={idx} className="hover:bg-gray-50">
                   <td className="py-3 px-4 font-medium">{item.name}</td>
                   <td className="py-3 px-4 text-center font-semibold text-green-700">
@@ -119,7 +201,11 @@ export default function DashboardPage() {
           Aksi Cepat: Verifikasi Pesanan (Hari Ini)
         </h2>
         <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
-          <VerificationTable orders={DASHBOARD_ORDERS} />
+          {loadingOrders ? (
+            <p className="text-gray-500">Memuat pesanan...</p>
+          ) : (
+            <VerificationTable orders={orders} />
+          )}
         </div>
       </div>
 

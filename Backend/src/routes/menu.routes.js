@@ -218,8 +218,8 @@ router.post("/", authenticateToken, requireAdmin, upload.single('image'), async 
   }
 });
 
-// PUT full replace (Admin)
-router.put("/:id", authenticateToken, requireAdmin, async (req, res) => {
+// PUT full replace (Admin) — mendukung form-data dengan upload foto baru
+router.put("/:id", authenticateToken, requireAdmin, upload.single("image"), async (req, res) => {
   try {
     const { name, price, description, stock, date, isAvailable } = req.body;
     if (!name || price == null) {
@@ -234,7 +234,7 @@ router.put("/:id", authenticateToken, requireAdmin, async (req, res) => {
       price: Number(price),
       description: description?.trim() || undefined,
       stock: stock != null ? Number(stock) : 0,
-      image: req.body.image?.trim() || undefined,
+      image: req.file ? req.file.path : req.body.image?.trim() || undefined,
       date: date ? new Date(date) : undefined,
       isAvailable: parsedIsAvailable !== undefined ? parsedIsAvailable : true,
     };
@@ -250,8 +250,8 @@ router.put("/:id", authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// PATCH partial update (Admin)
-router.patch("/:id", authenticateToken, requireAdmin, async (req, res) => {
+// PATCH partial update (Admin) — mendukung form-data dengan upload foto baru
+router.patch("/:id", authenticateToken, requireAdmin, upload.single("image"), async (req, res) => {
   try {
     const allowed = [
       "name",
@@ -277,6 +277,9 @@ router.patch("/:id", authenticateToken, requireAdmin, async (req, res) => {
       }
     }
     if (updates.name) updates.name = updates.name.trim();
+    if (req.file) {
+      updates.image = req.file.path;
+    }
     
     const doc = await Menu.findByIdAndUpdate(
       req.params.id,

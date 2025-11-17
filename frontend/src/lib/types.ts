@@ -40,13 +40,12 @@ export type OrderPaymentStatus = 'pending' | 'paid' | 'unpaid';
 export type OrderStatus = 'accepted' | 'processing' | 'ready' | 'completed' | 'cancelled';
 export type OrderDeliveryType = 'Delivery' | 'Pickup';
 export type OrderDeliveryTime = 'Pagi' | 'Siang' | 'Sore';
-export type OrderPaymentMethod = 'cash' | 'transfer'; // Sesuai backend
+export type OrderPaymentMethod = 'cash' | 'transfer'; 
 
 export interface Order {
   _id: string;
   userId: string; // ID dari User
   groupId?: string;
-  isGroupMaster?: boolean;
   items: OrderItem[];
   orderDates: string[]; // Array string ISO
   deliveryType: OrderDeliveryType;

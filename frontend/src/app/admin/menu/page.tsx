@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import MenuDetail, { menuData } from "@/components/admin/MenuDetail";
+import MenuDetail from "@/components/admin/MenuDetail";
 import AdminPageHeader from "@/components/admin/AdminPageHeader";
 import { useCurrentDate } from "@/hooks/UseCurrentDate";
+import { fetchMenuByDate } from "@/lib/api";
 
 const getWeekDates = (offset: number): Date[] => {
   const now = new Date();
@@ -33,6 +34,9 @@ const formatDateWithYear = (d: Date) =>
 export default function MenuPage() {
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
   const [selectedMenuDate, setSelectedMenuDate] = useState(formatISO(new Date()));
+  const [weekMenus, setWeekMenus] = useState<Record<string, number>>({});
+  const [weekLoading, setWeekLoading] = useState(false);
+  const [weekError, setWeekError] = useState<string | null>(null);
   const currentDate = useCurrentDate();
 
   const weekData = useMemo(() => {
@@ -42,12 +46,10 @@ export default function MenuPage() {
 
     const days = week.map((date) => {
       const iso = formatISO(date);
-      const menus = menuData[iso] || [];
       return {
         name: formatDayID(date),
         date: iso,
         dateShort: formatDateShort(date),
-        menuCount: menus.length,
       };
     });
 
@@ -67,6 +69,33 @@ export default function MenuPage() {
     const newWeek = getWeekDates(nextOffset);
     setSelectedMenuDate(formatISO(newWeek[0]));
   };
+
+  // Fetch jumlah menu per hari untuk minggu aktif
+  useEffect(() => {
+    const week = getWeekDates(currentWeekOffset);
+    setWeekLoading(true);
+    setWeekError(null);
+    Promise.all(
+      week.map((d) => {
+        const iso = formatISO(d);
+        return fetchMenuByDate(iso)
+          .then((res) => ({ date: iso, count: res.total ?? (res.items?.length || 0) }))
+          .catch(() => ({ date: iso, count: 0 }));
+      })
+    )
+      .then((list) => {
+        const map: Record<string, number> = {};
+        list.forEach((item) => {
+          map[item.date] = item.count;
+        });
+        setWeekMenus(map);
+      })
+      .catch((err) => {
+        console.warn("Gagal memuat ringkasan menu mingguan:", err.message);
+        setWeekError("Gagal memuat jumlah menu minggu ini.");
+      })
+      .finally(() => setWeekLoading(false));
+  }, [currentWeekOffset]);
 
   return (
     <div>
@@ -115,7 +144,7 @@ export default function MenuPage() {
               key={day.date}
               onClick={() => setSelectedMenuDate(day.date)}
               className={`text-left p-4 rounded-2xl border-2 transition-all duration-200 ${
-                day.menuCount > 0
+                (weekMenus[day.date] || 0) > 0
                   ? "border-primary bg-green-50 hover:bg-green-100 hover:border-green-600"
                   : "bg-gray-100 hover:bg-gray-200 border-transparent"
               } ${day.date === selectedMenuDate ? "ring-2 ring-primary ring-offset-2" : ""}`}
@@ -124,14 +153,24 @@ export default function MenuPage() {
               <span className="block text-sm text-gray-700">{day.dateShort}</span>
               <span
                 className={`block text-xs mt-2 font-semibold ${
-                  day.menuCount > 0 ? "text-green-700" : "text-gray-600"
+                  (weekMenus[day.date] || 0) > 0 ? "text-green-700" : "text-gray-600"
                 }`}
               >
-                {day.menuCount > 0 ? `${day.menuCount} Menu` : "Kosong"}
+                {(weekMenus[day.date] || 0) > 0
+                  ? `${weekMenus[day.date]} Menu`
+                  : "Kosong"}
               </span>
             </button>
           ))}
         </div>
+        {weekLoading && (
+          <p className="text-sm text-gray-500 mt-3">Memuat ringkasan menu minggu ini...</p>
+        )}
+        {weekError && (
+          <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 mt-2">
+            {weekError}
+          </p>
+        )}
       </div>
 
       <MenuDetail selectedDate={selectedMenuDate} />

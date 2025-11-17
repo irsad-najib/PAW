@@ -46,8 +46,6 @@ function requireAdmin(req, res, next) {
  *           type: string
  *           nullable: true
  *           description: "ID grup pembayaran multi-day (jika pesanan hasil split multi tanggal)."
- *         isGroupMaster:
- *           type: boolean
  *         items:
  *           type: array
  *           items:
@@ -389,7 +387,6 @@ router.post("/", authenticateToken, async (req, res) => {
             : "pending",
         totalPrice,
         groupId: groupId,
-        isGroupMaster: groupId ? idx === 0 : false,
       };
       const orderDoc = await Order.create(payload);
       createdOrders.push(orderDoc);

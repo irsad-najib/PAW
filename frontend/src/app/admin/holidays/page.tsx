@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { DUMMY_ORDERS } from "@/lib/data";
+// gunakan data dari backend, fallback kosong jika gagal
+import { fetchAdminOrders } from "@/lib/api";
 import { formatRupiah } from "@/lib/utils";
 import AdminPageHeader from "@/components/admin/AdminPageHeader";
 import { useCurrentDate } from "@/hooks/UseCurrentDate";
@@ -25,17 +26,24 @@ export default function HolidaysPage() {
   const currentDate = useCurrentDate();
 
   useEffect(() => {
-    const initialRefunds: HolidayRefund[] = DUMMY_ORDERS
-      .filter((o: any) => o.orderStatus === "cancelled" && o.paymentStatus === "paid")
-      .map((o: any) => ({
-        id: o._id,
-        customer: o.customerName ?? "Pelanggan",
-        total: o.totalPrice,
-        paymentMethod: o.paymentMethod,
-        status: "Belum Refund",
-      }));
+    let mounted = true;
+    fetchAdminOrders({ status: "cancelled", paymentStatus: "paid", limit: 200 })
+      .then((res) => {
+        if (!mounted) return;
+        const initialRefunds: HolidayRefund[] = (res.items || []).map((o: any) => ({
+          id: o._id,
+          customer: o.customerName ?? "Pelanggan",
+          total: o.totalPrice,
+          paymentMethod: o.paymentMethod,
+          status: "Belum Refund",
+        }));
+        setRefundOrders(initialRefunds);
+      })
+      .catch((err) => console.warn("Gagal memuat daftar refund:", err.message));
 
-    setRefundOrders(initialRefunds);
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleCancelOrders = () => {
@@ -45,16 +53,10 @@ export default function HolidaysPage() {
       return;
     }
 
-    const affected: HolidayRefund[] = DUMMY_ORDERS
-      .filter((o: any) => o.orderStatus === "cancelled" && o.paymentStatus === "paid")
-      .map((o: any) => ({
-        id: o._id,
-        customer: o.customerName ?? "Pelanggan",
-        total: o.totalPrice,
-        paymentMethod: o.paymentMethod,
-        status: "Belum Refund",
-      }));
+    const existingMap = new Map(refundOrders.map((o) => [o.id, o]));
 
+    // Tambah data baru hasil filter (simulasi: gunakan data yang sudah ada di state)
+    const affected = Array.from(existingMap.values());
     setRefundOrders((prev) => {
       const existing = new Set(prev.map((o) => o.id));
       const toAdd = affected.filter((o) => !existing.has(o.id));

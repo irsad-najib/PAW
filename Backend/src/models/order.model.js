@@ -34,11 +34,6 @@ const orderSchema = new mongoose.Schema(
       index: true,
       default: null,
     },
-    isGroupMaster: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
     items: {
       type: [orderItemSchema],
       validate: [

@@ -1,59 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Menu } from "@/lib/types";
+import { createMenu, deleteMenu, fetchMenuByDate, updateMenu } from "@/lib/api";
+import { formatDateLongID } from "@/lib/utils";
 
-export type MenuItem = {
-  id: string;
-  name: string;
-  description?: string;
-  price: number;
-  stock: number;
-  imageUrl?: string;
-};
-
-// --- DATA DUMMY (Simulasi Backend) ---
-export const menuData: Record<string, MenuItem[]> = {
-  "2025-11-15": [
-    {
-      id: "M-001",
-      name: "Nasi Ayam Bakar",
-      price: 20000,
-      stock: 50,
-      description: "Ayam bakar bumbu kecap, lalapan, sambal",
-    },
-    {
-      id: "M-002",
-      name: "Es Teh Manis",
-      price: 5000,
-      stock: 100,
-      description: "Teh melati, gula pasir, es batu",
-    },
-  ],
-  "2025-11-16": [
-    {
-      id: "M-003",
-      name: "Soto Ayam Komplit",
-      price: 17000,
-      stock: 45,
-      description: "Soto bening koya, telur, suwiran ayam",
-    },
-    {
-      id: "M-004",
-      name: "Gulai Ikan Patin",
-      price: 22000,
-      stock: 35,
-      description: "Kuah santan kental dengan daun ruku-ruku",
-    },
-  ],
-  "2025-11-17": [],
-  "2025-11-18": [
-    { id: "M-001", name: "Nasi Ayam Bakar", price: 21000, stock: 50 },
-    { id: "M-005", name: "Nasi Pecel Lele", price: 16000, stock: 60 },
-  ],
-  "2025-11-24": [
-    { id: "M-006", name: "Nasi Goreng Spesial", price: 18000, stock: 40 },
-  ],
-};
+type MenuItem = Menu & { imageUrl?: string };
 
 interface MenuDetailProps {
   selectedDate: string;
@@ -61,50 +13,80 @@ interface MenuDetailProps {
 
 export default function MenuDetail({ selectedDate }: MenuDetailProps) {
   const [menus, setMenus] = useState<MenuItem[]>([]);
+  const [catalog, setCatalog] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingMenu, setEditingMenu] = useState<MenuItem | null>(null);
   const [showDelete, setShowDelete] = useState<MenuItem | null>(null);
   const [formData, setFormData] = useState<MenuItem>({
-    id: "",
+    _id: "",
     name: "",
     description: "",
     price: 0,
     stock: 0,
-    imageUrl: "",
+    date: selectedDate,
+    isAvailable: true,
+    createdAt: "",
+    updatedAt: "",
   });
   const [formImageFile, setFormImageFile] = useState<File | null>(null);
   const [formImagePreview, setFormImagePreview] = useState<string>("");
-  const masterMenus: MenuItem[] = Array.from(
-    Object.values(menuData).flat().reduce((map, item) => {
-      if (!map.has(item.id)) map.set(item.id, item);
-      return map;
-    }, new Map<string, MenuItem>())
-  );
+  const [searchTemplate, setSearchTemplate] = useState("");
+
+  const readableDate = formatDateLongID(selectedDate + "T00:00:00");
+
+  const refreshMenus = () => {
+    setLoading(true);
+    setError(null);
+    fetchMenuByDate(selectedDate)
+      .then((res) => {
+        setMenus((res.items || []) as MenuItem[]);
+      })
+      .catch((err) => {
+        console.warn("Gagal memuat menu:", err.message);
+        setError("Gagal memuat menu untuk tanggal ini.");
+        setMenus([]);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  // Load catalog (semua menu available) sekali
+  useEffect(() => {
+    fetchMenuByDate(undefined)
+      .then((res) => setCatalog((res.items || []) as MenuItem[]))
+      .catch((err) => console.warn("Gagal memuat katalog menu:", err.message));
+  }, []);
 
   useEffect(() => {
-    setMenus(menuData[selectedDate] || []);
+    refreshMenus();
     setEditingMenu(null);
     setShowForm(false);
     setShowDelete(null);
   }, [selectedDate]);
 
   const resetForm = () =>
-    setFormData({ id: "", name: "", description: "", price: 0, stock: 0, imageUrl: "" });
+    setFormData({
+      _id: "",
+      name: "",
+      description: "",
+      price: 0,
+      stock: 0,
+      date: selectedDate,
+      isAvailable: true,
+      createdAt: "",
+      updatedAt: "",
+    } as MenuItem);
 
-  const handleCopyExisting = (id: string) => {
-    if (!id) return;
-    const template = masterMenus.find((m) => m.id === id);
+  const handleCopyTemplate = (id: string) => {
+    const template = catalog.find((m) => m._id === id);
     if (!template) return;
     setFormData((prev) => ({
       ...prev,
-      id: template.id,
       name: template.name,
       description: template.description,
-      // Harga dan stok dibiarkan dari input sebelumnya jika perlu ditimpa manual
     }));
-    if (template.imageUrl) {
-      setFormImagePreview(template.imageUrl);
-    }
+    if (template.image) setFormImagePreview(template.image);
   };
 
   const handleOpenAdd = () => {
@@ -120,24 +102,45 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
     setFormData(menu);
     setShowForm(true);
     setFormImageFile(null);
-    setFormImagePreview(menu.imageUrl || "");
+    setFormImagePreview(menu.imageUrl || (menu as any).image || "");
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name || !formData.price) return;
-    const imageUrlToUse = formImagePreview || formData.imageUrl || "";
-    if (editingMenu) {
-      setMenus((prev) =>
-        prev.map((m) =>
-          m.id === editingMenu.id ? { ...formData, imageUrl: imageUrlToUse } : m
-        )
+    const duplicate =
+      !editingMenu &&
+      menus.some(
+        (m) => m.name.trim().toLowerCase() === formData.name.trim().toLowerCase()
       );
-    } else {
-      setMenus((prev) => [
-        ...prev,
-        { ...formData, imageUrl: imageUrlToUse, id: formData.id || `NEW-${Date.now()}` },
-      ]);
+    if (duplicate) {
+      setError("Nama menu sudah ada untuk tanggal ini.");
+      return;
     }
+
+    const imageUrlToUse = formImagePreview || (formData as any).image || "";
+    const payload = {
+      name: formData.name,
+      price: Number(formData.price) || 0,
+      description: formData.description,
+      stock: Number(formData.stock) || 0,
+      date: selectedDate,
+      isAvailable: true,
+      image: formImageFile ? formImageFile : imageUrlToUse || null,
+    };
+
+    try {
+      if (editingMenu?._id) {
+        await updateMenu(editingMenu._id, payload);
+      } else {
+        await createMenu(payload);
+      }
+      refreshMenus();
+      setError(null);
+    } catch (e: any) {
+      console.warn("Simpan menu gagal:", e.message);
+      setError("Gagal menyimpan menu, coba lagi.");
+    }
+
     setShowForm(false);
     setEditingMenu(null);
     resetForm();
@@ -145,38 +148,59 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
     setFormImagePreview("");
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!showDelete) return;
-    setMenus((prev) => prev.filter((m) => m.id !== showDelete.id));
+    try {
+      if (showDelete._id) {
+        await deleteMenu(showDelete._id);
+      }
+      refreshMenus();
+    } catch (e: any) {
+      console.warn("Hapus menu gagal:", e.message);
+      setError("Gagal menghapus menu, coba lagi.");
+    }
     setShowDelete(null);
   };
 
-  const readableDate = new Date(selectedDate + "T00:00:00").toLocaleDateString(
-    "id-ID",
-    {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }
-  );
+  const filteredTemplates = useMemo(() => {
+    const q = searchTemplate.trim().toLowerCase();
+    if (!q) return catalog;
+    return catalog.filter((m) => m.name.toLowerCase().includes(q));
+  }, [catalog, searchTemplate]);
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-lg">
-      <h3 className="text-lg font-bold text-gray-800 mb-4">
-        Detail Menu: {readableDate}
-      </h3>
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <div>
+          <p className="text-xs uppercase text-gray-500 tracking-wide text-primary font-semibold">
+            Atur Menu
+          </p>
+          <h3 className="text-xl font-bold text-gray-800">Tanggal {readableDate}</h3>
+        </div>
+        <button
+          className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold shadow hover:bg-blue-700 transition"
+          onClick={handleOpenAdd}
+        >
+          <span className="text-lg">＋</span>
+          <span>Tambah Menu</span>
+        </button>
+      </div>
 
-      {menus.length > 0 ? (
+      {error && (
+        <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 px-3 py-2 rounded-lg mb-3">
+          {error}
+        </p>
+      )}
+
+      {loading ? (
+        <p className="text-gray-500">Memuat menu...</p>
+      ) : menus.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Nama Menu
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Foto
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Deskripsi
@@ -192,29 +216,16 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                 </th>
               </tr>
             </thead>
-
             <tbody className="bg-white divide-y divide-gray-200">
               {menus.map((menu) => (
-                <tr key={menu.id}>
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                <tr key={menu._id || menu.name}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {menu.name}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">
-                    {menu.imageUrl ? (
-                      <img
-                        src={menu.imageUrl}
-                        alt={menu.name}
-                        className="w-16 h-16 object-cover rounded-lg border"
-                      />
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">
+                  <td className="px-6 py-4 text-sm text-gray-500 max-w-xs">
                     {menu.description || "-"}
                   </td>
-
-                  <td className="px-6 py-4 text-sm text-gray-800">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
                     Rp {menu.price.toLocaleString("id-ID")}
                   </td>
 
@@ -243,24 +254,15 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
           </table>
         </div>
       ) : (
-        <p className="text-gray-500">
-          Tidak ada menu yang diinput untuk tanggal ini.
-        </p>
+        <p className="text-gray-500">Tidak ada menu yang diinput untuk tanggal ini.</p>
       )}
-
-      <button
-        className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition"
-      onClick={handleOpenAdd}
-    >
-      + Tambah Menu Baru
-    </button>
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl p-6">
             <div className="flex items-start justify-between mb-6">
               <div>
-                <p className="text-xs uppercase tracking-wide text-primary font-semibold">
+                <p className="text-xs uppercase tracking-wide text-blue-600 font-semibold">
                   {editingMenu ? "Edit Menu" : "Tambah Menu"}
                 </p>
                 <h4 className="text-xl font-extrabold text-gray-900">
@@ -269,7 +271,7 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                 <p className="text-sm text-gray-600">
                   {editingMenu
                     ? "Perbaharui data menu untuk tanggal ini."
-                    : "Isi detail menu untuk tanggal ini."}
+                    : "Isi detail menu untuk tanggal ini atau gunakan menu yang sudah ada."}
                 </p>
               </div>
               <button
@@ -285,139 +287,142 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
             </div>
 
             <div className="space-y-5 text-sm">
-              <div>
+              <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-3">
                 <label className="block text-sm font-semibold text-gray-800 mb-1">
-                  Nama Menu
+                  Gunakan Menu yang Sudah Ada
                 </label>
                 <input
                   type="text"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, name: e.target.value }))
-                  }
+                  placeholder="Cari nama menu..."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400"
+                  value={searchTemplate}
+                  onChange={(e) => setSearchTemplate(e.target.value)}
                 />
+                <select
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900"
+                  defaultValue=""
+                  onChange={(e) => handleCopyTemplate(e.target.value)}
+                >
+                  <option value="">Pilih menu untuk disalin...</option>
+                  {filteredTemplates.map((m) => (
+                    <option key={m._id} value={m._id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Nama sama di tanggal ini akan ditolak untuk menghindari duplikasi. Data yang disalin: nama, deskripsi, dan gambar.
+                </p>
               </div>
-              {!editingMenu && (
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-800 mb-1">
-                    Salin dari Menu Sebelumnya (opsional)
+                    Nama Menu
                   </label>
-                  <select
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900"
-                    defaultValue=""
-                    onChange={(e) => handleCopyExisting(e.target.value)}
-                  >
-                    <option value="">Pilih menu...</option>
-                    {masterMenus.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.id})
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Memilih menu akan mengisi nama & deskripsi. Sesuaikan harga/stok untuk tanggal ini.
-                  </p>
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-1">
-                  Deskripsi Singkat
-                </label>
-                <textarea
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400"
-                  rows={2}
-                  value={formData.description || ""}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      description: e.target.value,
-                    }))
-                  }
-                  placeholder="Contoh: Ayam bakar bumbu kecap, lalapan, sambal"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-1">
-                  {editingMenu ? "Foto Menu (Opsional: ganti foto)" : "Foto Menu"}
-                </label>
-                <label className="flex items-center justify-between w-full rounded-lg border border-dashed border-gray-300 px-4 py-3 cursor-pointer hover:border-primary hover:bg-primary/5 text-gray-800">
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-semibold">
-                      {formImagePreview || formData.imageUrl
-                        ? "Ganti / Upload Foto"
-                        : "Upload Foto Menu"}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Klik untuk memilih file (jpg/png). Jika edit, biarkan kosong untuk pakai foto lama.
-                    </p>
-                  </div>
-                  <span className="text-lg">📤</span>
                   <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setFormImageFile(file);
-                        setFormImagePreview(URL.createObjectURL(file));
-                      } else {
-                        setFormImageFile(null);
-                        setFormImagePreview("");
-                      }
-                    }}
+                    type="text"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, name: e.target.value }))
+                    }
                   />
-                </label>
-                {(formImagePreview || formData.imageUrl) && (
-                  <div className="mt-2">
-                    <p className="text-xs text-gray-700 mb-1 font-semibold">Pratinjau:</p>
-                    <img
-                      src={formImagePreview || formData.imageUrl}
-                      alt={formData.name}
-                      className="w-full h-32 object-cover rounded-lg border"
-                    />
-                    {editingMenu && formData.imageUrl && !formImagePreview && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Menggunakan gambar lama. Unggah untuk mengganti.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-800 mb-1">
                     Harga (Rp)
                   </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  value={formData.price}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      price: Number(e.target.value.replace(/[^0-9]/g, "")) || 0,
+                    }))
+                  }
+                />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-800 mb-1">
+                    Stok Porsi
+                  </label>
                   <input
-                    type="number"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900"
-                    value={formData.price}
+                    type="text"
+                    inputMode="numeric"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    value={formData.stock}
                     onChange={(e) =>
                       setFormData((prev) => ({
                         ...prev,
-                        price: Number(e.target.value),
+                        stock: Number(e.target.value.replace(/[^0-9]/g, "")) || 0,
                       }))
                     }
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-800 mb-1">
-                    Stok (Porsi)
+                    Deskripsi Singkat
                   </label>
-                  <input
-                    type="number"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900"
-                    value={formData.stock}
+                  <textarea
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400"
+                    rows={2}
+                    value={formData.description || ""}
                     onChange={(e) =>
                       setFormData((prev) => ({
                         ...prev,
-                        stock: Number(e.target.value),
+                        description: e.target.value,
                       }))
                     }
+                    placeholder="Contoh: Ayam bakar bumbu kecap, lalapan, sambal"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-800 mb-1">
+                  Upload Foto Menu
+                </label>
+                <div className="flex items-center gap-3">
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 border border-dashed border-gray-400 rounded-lg text-gray-700 hover:border-primary hover:text-primary transition">
+                    <span className="text-lg">⬆</span>
+                    <span className="font-semibold text-sm">
+                      {formImageFile ? formImageFile.name : "Pilih file"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        setFormImageFile(file || null);
+                        if (file) {
+                          setFormImagePreview(URL.createObjectURL(file));
+                        } else {
+                          setFormImagePreview("");
+                        }
+                      }}
+                    />
+                  </label>
+                  {formImagePreview && (
+                    <img
+                      src={formImagePreview}
+                      alt="Preview"
+                      className="h-16 w-16 rounded-lg object-cover border"
+                    />
+                  )}
+                </div>
+                {!formImagePreview && editingMenu && (editingMenu as any).image && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Gambar tersimpan akan dipakai jika tidak upload baru.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -428,7 +433,7 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                   setEditingMenu(null);
                   resetForm();
                 }}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50"
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
               >
                 Batal
               </button>
@@ -444,19 +449,16 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
       )}
 
       {showDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 border border-gray-200">
-            <h4 className="text-lg font-bold text-gray-900 mb-2">
-              Hapus Menu?
-            </h4>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6">
+            <h4 className="text-lg font-bold text-gray-900 mb-3">Konfirmasi Hapus</h4>
             <p className="text-sm text-gray-700 mb-6">
-              Anda akan menghapus menu "{showDelete.name}" dari tanggal ini.
-              Tindakan ini tidak memengaruhi pesanan yang sudah ada.
+              Hapus menu <span className="font-semibold">{showDelete.name}</span> untuk tanggal ini?
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowDelete(null)}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50"
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
               >
                 Batal
               </button>

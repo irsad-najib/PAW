@@ -6,7 +6,7 @@ import { ConfirmActionModal } from "./order-controls/ConfirmActionModal";
 interface MenuItemData {
   name: string;
   portions: number;
-  notes?: string;
+  notes?: string | string[];
 }
 
 interface MealTimeData {
