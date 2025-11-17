@@ -162,11 +162,21 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
     setShowDelete(null);
   };
 
+  const uniqueCatalog = useMemo(() => {
+    const seen = new Set<string>();
+    return catalog.filter((m) => {
+      const key = m.name.trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [catalog]);
+
   const filteredTemplates = useMemo(() => {
     const q = searchTemplate.trim().toLowerCase();
-    if (!q) return catalog;
-    return catalog.filter((m) => m.name.toLowerCase().includes(q));
-  }, [catalog, searchTemplate]);
+    if (!q) return uniqueCatalog;
+    return uniqueCatalog.filter((m) => m.name.toLowerCase().includes(q));
+  }, [uniqueCatalog, searchTemplate]);
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-lg">
@@ -287,33 +297,37 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
             </div>
 
             <div className="space-y-5 text-sm">
-              <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-3">
-                <label className="block text-sm font-semibold text-gray-800 mb-1">
-                  Gunakan Menu yang Sudah Ada
-                </label>
-                <input
-                  type="text"
-                  placeholder="Cari nama menu..."
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400"
-                  value={searchTemplate}
-                  onChange={(e) => setSearchTemplate(e.target.value)}
-                />
-                <select
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900"
-                  defaultValue=""
-                  onChange={(e) => handleCopyTemplate(e.target.value)}
-                >
-                  <option value="">Pilih menu untuk disalin...</option>
-                  {filteredTemplates.map((m) => (
-                    <option key={m._id} value={m._id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Nama sama di tanggal ini akan ditolak untuk menghindari duplikasi. Data yang disalin: nama, deskripsi, dan gambar.
-                </p>
-              </div>
+              {!editingMenu && (
+                <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-3">
+                  <label className="block text-sm font-semibold text-gray-800 mb-1">
+                    Gunakan Menu yang Sudah Ada
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="text"
+                      placeholder="Cari nama menu..."
+                      className="w-full sm:flex-1 rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400"
+                      value={searchTemplate}
+                      onChange={(e) => setSearchTemplate(e.target.value)}
+                    />
+                    <select
+                      className="w-full sm:w-64 rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900"
+                      value=""
+                      onChange={(e) => handleCopyTemplate(e.target.value)}
+                    >
+                      <option value="">Pilih menu untuk disalin...</option>
+                      {filteredTemplates.map((m) => (
+                        <option key={m._id} value={m._id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Nama sama di tanggal ini akan ditolak untuk menghindari duplikasi. Data yang disalin: nama, deskripsi, dan gambar.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
