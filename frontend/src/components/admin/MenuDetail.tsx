@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -110,7 +111,8 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
     const duplicate =
       !editingMenu &&
       menus.some(
-        (m) => m.name.trim().toLowerCase() === formData.name.trim().toLowerCase()
+        (m) =>
+          m.name.trim().toLowerCase() === formData.name.trim().toLowerCase()
       );
     if (duplicate) {
       setError("Nama menu sudah ada untuk tanggal ini.");
@@ -185,12 +187,13 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
           <p className="text-xs uppercase text-gray-500 tracking-wide text-primary font-semibold">
             Atur Menu
           </p>
-          <h3 className="text-xl font-bold text-gray-800">Tanggal {readableDate}</h3>
+          <h3 className="text-xl font-bold text-gray-800">
+            Tanggal {readableDate}
+          </h3>
         </div>
         <button
           className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold shadow hover:bg-blue-700 transition"
-          onClick={handleOpenAdd}
-        >
+          onClick={handleOpenAdd}>
           <span className="text-lg">＋</span>
           <span>Tambah Menu</span>
         </button>
@@ -246,15 +249,13 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                   <td className="px-6 py-4 text-sm font-semibold">
                     <button
                       onClick={() => handleOpenEdit(menu)}
-                      className="text-blue-600 hover:text-blue-800 font-semibold"
-                    >
+                      className="text-blue-600 hover:text-blue-800 font-semibold">
                       Edit
                     </button>
 
                     <button
                       onClick={() => setShowDelete(menu)}
-                      className="text-red-600 hover:text-red-800 font-semibold ml-4"
-                    >
+                      className="text-red-600 hover:text-red-800 font-semibold ml-4">
                       Hapus
                     </button>
                   </td>
@@ -264,7 +265,9 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
           </table>
         </div>
       ) : (
-        <p className="text-gray-500">Tidak ada menu yang diinput untuk tanggal ini.</p>
+        <p className="text-gray-500">
+          Tidak ada menu yang diinput untuk tanggal ini.
+        </p>
       )}
 
       {showForm && (
@@ -290,8 +293,7 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                   setEditingMenu(null);
                   resetForm();
                 }}
-                className="text-gray-500 hover:text-gray-700"
-              >
+                className="text-gray-500 hover:text-gray-700">
                 ✕
               </button>
             </div>
@@ -313,8 +315,7 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                     <select
                       className="w-full sm:w-64 rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900"
                       value=""
-                      onChange={(e) => handleCopyTemplate(e.target.value)}
-                    >
+                      onChange={(e) => handleCopyTemplate(e.target.value)}>
                       <option value="">Pilih menu untuk disalin...</option>
                       {filteredTemplates.map((m) => (
                         <option key={m._id} value={m._id}>
@@ -324,7 +325,8 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                     </select>
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
-                    Nama sama di tanggal ini akan ditolak untuk menghindari duplikasi. Data yang disalin: nama, deskripsi, dan gambar.
+                    Nama sama di tanggal ini akan ditolak untuk menghindari
+                    duplikasi. Data yang disalin: nama, deskripsi, dan gambar.
                   </p>
                 </div>
               )}
@@ -347,18 +349,19 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                   <label className="block text-sm font-semibold text-gray-800 mb-1">
                     Harga (Rp)
                   </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  value={formData.price}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      price: Number(e.target.value.replace(/[^0-9]/g, "")) || 0,
-                    }))
-                  }
-                />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary bg-white text-gray-900 placeholder:text-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    value={formData.price}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        price:
+                          Number(e.target.value.replace(/[^0-9]/g, "")) || 0,
+                      }))
+                    }
+                  />
                 </div>
               </div>
 
@@ -375,7 +378,8 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                     onChange={(e) =>
                       setFormData((prev) => ({
                         ...prev,
-                        stock: Number(e.target.value.replace(/[^0-9]/g, "")) || 0,
+                        stock:
+                          Number(e.target.value.replace(/[^0-9]/g, "")) || 0,
                       }))
                     }
                   />
@@ -432,11 +436,13 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                     />
                   )}
                 </div>
-                {!formImagePreview && editingMenu && (editingMenu as any).image && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Gambar tersimpan akan dipakai jika tidak upload baru.
-                  </p>
-                )}
+                {!formImagePreview &&
+                  editingMenu &&
+                  (editingMenu as any).image && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Gambar tersimpan akan dipakai jika tidak upload baru.
+                    </p>
+                  )}
               </div>
             </div>
 
@@ -447,14 +453,12 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
                   setEditingMenu(null);
                   resetForm();
                 }}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-              >
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100">
                 Batal
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700"
-              >
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700">
                 Simpan
               </button>
             </div>
@@ -465,21 +469,23 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
       {showDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6">
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Konfirmasi Hapus</h4>
+            <h4 className="text-lg font-bold text-gray-900 mb-3">
+              Konfirmasi Hapus
+            </h4>
             <p className="text-sm text-gray-700 mb-6">
-              Hapus menu <span className="font-semibold">{showDelete.name}</span> untuk tanggal ini?
+              Hapus menu{" "}
+              <span className="font-semibold">{showDelete.name}</span> untuk
+              tanggal ini?
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowDelete(null)}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-              >
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100">
                 Batal
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700"
-              >
+                className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700">
                 Hapus
               </button>
             </div>

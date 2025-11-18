@@ -1,16 +1,20 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Order, OrderStatus, getUserDisplayName, getMenuName } from "@/lib/types";
+import {
+  Order,
+  OrderStatus,
+  getUserDisplayName,
+  getMenuName,
+} from "@/lib/types";
 import {
   OrderStatusBadge,
   PaymentStatusBadge,
   ORDER_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
 } from "./order-controls/OrderBadges";
-import {
-  OrderActionButton,
-} from "./order-controls/OrderActionButtons";
+import { OrderActionButton } from "./order-controls/OrderActionButtons";
 import { ConfirmActionModal } from "./order-controls/ConfirmActionModal";
 import { PaymentScopeModal } from "./order-controls/PaymentScopeModal";
 import NotesModal from "./NotesModal";
@@ -39,11 +43,14 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
   const [statusFilter, setStatusFilter] = useState("Semua Status");
   const [timeFilter, setTimeFilter] = useState("Semua Waktu");
   const [typeFilter, setTypeFilter] = useState("Semua Tipe");
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
-  const [paymentAction, setPaymentAction] = useState<PaymentAction | null>(null);
-  const [orderDetailModal, setOrderDetailModal] = useState<OrderDetailModal>(
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
     null
   );
+  const [paymentAction, setPaymentAction] = useState<PaymentAction | null>(
+    null
+  );
+  const [orderDetailModal, setOrderDetailModal] =
+    useState<OrderDetailModal>(null);
   const [notesModal, setNotesModal] = useState<{
     title: string;
     notes: string[];
@@ -76,10 +83,15 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
     });
   }, [orderState, searchQuery, statusFilter, timeFilter, typeFilter]);
 
-  const setPaymentStatus = (orderIds: string[], status: "paid" | "unpaid" | "pending") => {
+  const setPaymentStatus = (
+    orderIds: string[],
+    status: "paid" | "unpaid" | "pending"
+  ) => {
     setOrderState((prev) =>
       prev.map((order) =>
-        orderIds.includes(order._id) ? { ...order, paymentStatus: status } : order
+        orderIds.includes(order._id)
+          ? { ...order, paymentStatus: status }
+          : order
       )
     );
   };
@@ -130,7 +142,11 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
     setPaymentAction(null);
   };
 
-  const openConfirm = (order: Order, nextStatus: OrderStatus, label: string) => {
+  const openConfirm = (
+    order: Order,
+    nextStatus: OrderStatus,
+    label: string
+  ) => {
     // jika nextStatus completed dan masih unpaid, langsung buka modal pembayaran
     if (nextStatus === "completed" && order.paymentStatus === "unpaid") {
       openPaymentModal(order, nextStatus);
@@ -160,8 +176,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
           <select
             value={timeFilter}
             onChange={(e) => setTimeFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-400 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-          >
+            className="px-4 py-2 border border-gray-400 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
             <option>Semua Waktu</option>
             <option>Pagi</option>
             <option>Siang</option>
@@ -171,8 +186,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-400 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-          >
+            className="px-4 py-2 border border-gray-400 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
             <option>Semua Tipe</option>
             <option>Diantar</option>
             <option>Diambil</option>
@@ -181,8 +195,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-400 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-          >
+            className="px-4 py-2 border border-gray-400 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
             <option>Semua Status</option>
             {Object.values(ORDER_STATUS_LABELS).map((label) => (
               <option key={label}>{label}</option>
@@ -220,7 +233,9 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-6 text-center text-gray-500 text-sm">
+                  <td
+                    colSpan={7}
+                    className="py-6 text-center text-gray-500 text-sm">
                     Tidak ada pesanan yang ditemukan
                   </td>
                 </tr>
@@ -229,7 +244,10 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
                   const itemsSummary =
                     order.items && order.items.length > 0
                       ? order.items
-                          .map((item) => `${getMenuName(item.menuId)} x${item.quantity}`)
+                          .map(
+                            (item) =>
+                              `${getMenuName(item.menuId)} x${item.quantity}`
+                          )
                           .join(", ")
                       : "-";
 
@@ -238,8 +256,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
                       <td className="py-3 px-4 whitespace-nowrap text-sm font-medium">
                         <button
                           onClick={() => setOrderDetailModal(order)}
-                          className="text-blue-600 hover:underline font-medium"
-                        >
+                          className="text-blue-600 hover:underline font-medium">
                           {order._id}
                         </button>
                       </td>
@@ -256,9 +273,10 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
                         {order.deliveryTime} /{" "}
                         {order.deliveryType === "Delivery" ? (
                           <span
-                            title={order.deliveryAddress || "Alamat belum diisi"}
-                            className="underline decoration-dotted decoration-primary cursor-help"
-                          >
+                            title={
+                              order.deliveryAddress || "Alamat belum diisi"
+                            }
+                            className="underline decoration-dotted decoration-primary cursor-help">
                             Diantar
                           </span>
                         ) : (
@@ -270,8 +288,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
                         {order.paymentStatus === "unpaid" ? (
                           <button
                             onClick={() => openPaymentModal(order)}
-                            className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors"
-                          >
+                            className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors">
                             Belum Lunas
                           </button>
                         ) : (
@@ -314,7 +331,10 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
           onClose={() => setConfirmAction(null)}
           onConfirm={async () => {
             try {
-              await updateOrderStatus(confirmAction.order._id, confirmAction.nextStatus);
+              await updateOrderStatus(
+                confirmAction.order._id,
+                confirmAction.nextStatus
+              );
               setOrderStatus(confirmAction.order._id, confirmAction.nextStatus);
             } catch (err: any) {
               console.error("Gagal update status:", err.message);
@@ -352,8 +372,9 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
                   Detail Pesanan: {orderDetailModal._id}
                 </h4>
                 <p className="text-sm text-gray-600">
-                  {orderDetailModal.customerName || getUserDisplayName(orderDetailModal.userId)} •{" "}
-                  {orderDetailModal.deliveryTime} /{" "}
+                  {orderDetailModal.customerName ||
+                    getUserDisplayName(orderDetailModal.userId)}{" "}
+                  • {orderDetailModal.deliveryTime} /{" "}
                   {orderDetailModal.deliveryType === "Delivery"
                     ? "Diantar"
                     : "Diambil"}
@@ -361,8 +382,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
               </div>
               <button
                 onClick={() => setOrderDetailModal(null)}
-                className="text-gray-500 hover:text-gray-700"
-              >
+                className="text-gray-500 hover:text-gray-700">
                 ✕
               </button>
             </div>
@@ -411,8 +431,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
             <div className="flex justify-end">
               <button
                 onClick={() => setOrderDetailModal(null)}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
-              >
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
                 Tutup
               </button>
             </div>

@@ -22,7 +22,9 @@ export default function HolidaysPage() {
   const [reason, setReason] = useState("");
   const [refundOrders, setRefundOrders] = useState<HolidayRefund[]>([]);
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const [confirmRefund, setConfirmRefund] = useState<HolidayRefund | null>(null);
+  const [confirmRefund, setConfirmRefund] = useState<HolidayRefund | null>(
+    null
+  );
   const currentDate = useCurrentDate();
 
   useEffect(() => {
@@ -30,13 +32,16 @@ export default function HolidaysPage() {
     fetchAdminOrders({ status: "cancelled", paymentStatus: "paid", limit: 200 })
       .then((res) => {
         if (!mounted) return;
-        const initialRefunds: HolidayRefund[] = (res.items || []).map((o: any) => ({
-          id: o._id,
-          customer: o.customerName ?? "Pelanggan",
-          total: o.totalPrice,
-          paymentMethod: o.paymentMethod,
-          status: "Belum Refund",
-        }));
+        const initialRefunds: HolidayRefund[] = (res.items || []).map(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (o: any) => ({
+            id: o._id,
+            customer: o.customerName ?? "Pelanggan",
+            total: o.totalPrice,
+            paymentMethod: o.paymentMethod,
+            status: "Belum Refund",
+          })
+        );
         setRefundOrders(initialRefunds);
       })
       .catch((err) => console.warn("Gagal memuat daftar refund:", err.message));
@@ -49,7 +54,9 @@ export default function HolidaysPage() {
   const handleCancelOrders = () => {
     const missingField = !startDate || !endDate || !reason;
     if (missingField) {
-      alert("Harap isi semua field: Tanggal Awal, Tanggal Akhir, dan Alasan Pembatalan.");
+      alert(
+        "Harap isi semua field: Tanggal Awal, Tanggal Akhir, dan Alasan Pembatalan."
+      );
       return;
     }
 
@@ -87,16 +94,21 @@ export default function HolidaysPage() {
       />
 
       <div className="bg-white p-6 rounded-xl shadow-lg border-l-4 border-red-500 mb-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Batalkan Pesanan</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">
+          Batalkan Pesanan
+        </h2>
         <p className="text-sm text-gray-600 mb-6">
-          Gunakan formulir ini jika Anda harus membatalkan pesanan untuk rentang tanggal tertentu
-          (misalnya libur mendadak). Sistem akan menemukan pesanan yang sudah dibayar dan dibatalkan
-          yang perlu diproses refund secara manual.
+          Gunakan formulir ini jika Anda harus membatalkan pesanan untuk rentang
+          tanggal tertentu (misalnya libur mendadak). Sistem akan menemukan
+          pesanan yang sudah dibayar dan dibatalkan yang perlu diproses refund
+          secara manual.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <label htmlFor="holiday-start-date" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="holiday-start-date"
+              className="block text-sm font-medium text-gray-700 mb-1">
               Tanggal Awal
             </label>
             <input
@@ -109,7 +121,9 @@ export default function HolidaysPage() {
           </div>
 
           <div>
-            <label htmlFor="holiday-end-date" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="holiday-end-date"
+              className="block text-sm font-medium text-gray-700 mb-1">
               Tanggal Akhir
             </label>
             <input
@@ -123,7 +137,9 @@ export default function HolidaysPage() {
         </div>
 
         <div className="mb-6">
-          <label htmlFor="holiday-reason" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="holiday-reason"
+            className="block text-sm font-medium text-gray-700 mb-1">
             Alasan Pembatalan (Wajib)
           </label>
           <textarea
@@ -138,8 +154,7 @@ export default function HolidaysPage() {
 
         <button
           onClick={() => setConfirmCancel(true)}
-          className="w-full bg-red-600 text-white p-3 rounded-lg text-lg font-bold hover:bg-red-700 shadow-lg"
-        >
+          className="w-full bg-red-600 text-white p-3 rounded-lg text-lg font-bold hover:bg-red-700 shadow-lg">
           Batalkan Pesanan
         </button>
       </div>
@@ -149,8 +164,9 @@ export default function HolidaysPage() {
           Pesanan Terdampak (Perlu Refund)
         </h2>
         <p className="text-sm text-gray-600 mb-4">
-          Pesanan berikut sudah dibayar dan statusnya dibatalkan. Silakan proses refund secara manual
-          (misalnya via transfer balik atau dashboard Midtrans/bank).
+          Pesanan berikut sudah dibayar dan statusnya dibatalkan. Silakan proses
+          refund secara manual (misalnya via transfer balik atau dashboard
+          Midtrans/bank).
         </p>
 
         {refundOrders.length > 0 ? (
@@ -193,8 +209,7 @@ export default function HolidaysPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
                         onClick={() => setConfirmRefund(order)}
-                        className="text-white bg-green-600 px-3 py-1 rounded-md text-xs font-bold hover:bg-green-700"
-                      >
+                        className="text-white bg-green-600 px-3 py-1 rounded-md text-xs font-bold hover:bg-green-700">
                         Proses Refund
                       </button>
                     </td>
@@ -213,7 +228,9 @@ export default function HolidaysPage() {
       {confirmCancel && (
         <ConfirmActionModal
           title="Konfirmasi Pembatalan"
-          description={`Aktifkan pembatalan pesanan untuk rentang ${startDate || "?"} s/d ${endDate || "?"} dengan alasan: "${reason || "Belum diisi"}"?`}
+          description={`Aktifkan pembatalan pesanan untuk rentang ${
+            startDate || "?"
+          } s/d ${endDate || "?"} dengan alasan: "${reason || "Belum diisi"}"?`}
           onClose={() => setConfirmCancel(false)}
           onConfirm={handleCancelOrders}
         />
@@ -222,7 +239,9 @@ export default function HolidaysPage() {
       {confirmRefund && (
         <ConfirmActionModal
           title="Konfirmasi Refund"
-          description={`Proses refund pesanan ${confirmRefund.id} a.n ${confirmRefund.customer} sebesar ${formatRupiah(confirmRefund.total)}?`}
+          description={`Proses refund pesanan ${confirmRefund.id} a.n ${
+            confirmRefund.customer
+          } sebesar ${formatRupiah(confirmRefund.total)}?`}
           onClose={() => setConfirmRefund(null)}
           onConfirm={() => {
             handleProcessRefund(confirmRefund.id);

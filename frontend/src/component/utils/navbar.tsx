@@ -1,18 +1,18 @@
 "use client";
 import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 
 const Navbar = () => {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
+  // const pathname = usePathname();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Check if current page is NOT landing page
-  const isNotLandingPage = pathname !== "/";
+  // const isNotLandingPage = pathname !== "/";
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

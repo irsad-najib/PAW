@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -62,7 +63,7 @@ export default function ProductionSummary({
       alert("Tidak ada pesanan untuk diupdate");
       return;
     }
-    
+
     setConfirmAction({
       mealIndex,
       nextStatus,
@@ -76,7 +77,7 @@ export default function ProductionSummary({
   const handleConfirm = async () => {
     if (!confirmAction) return;
     const { mealIndex, nextStatus, orderStatus, orderIds } = confirmAction;
-    
+
     setUpdating(true);
     try {
       await batchUpdateOrderStatus(orderIds, orderStatus);
@@ -131,9 +132,10 @@ export default function ProductionSummary({
                           meal.orderIds || []
                         )
                       }
-                      disabled={updating || !meal.orderIds || meal.orderIds.length === 0}
-                      className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-lg hover:bg-yellow-600 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                      disabled={
+                        updating || !meal.orderIds || meal.orderIds.length === 0
+                      }
+                      className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-lg hover:bg-yellow-600 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
                       {updating ? "Updating..." : "Proses Pesanan"}
                     </button>
                   )}
@@ -150,9 +152,10 @@ export default function ProductionSummary({
                           meal.orderIds || []
                         )
                       }
-                      disabled={updating || !meal.orderIds || meal.orderIds.length === 0}
-                      className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                      disabled={
+                        updating || !meal.orderIds || meal.orderIds.length === 0
+                      }
+                      className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
                       {updating ? "Updating..." : "Tandai Siap"}
                     </button>
                   )}
@@ -204,8 +207,7 @@ export default function ProductionSummary({
                                   )
                                 }
                                 className="inline-flex items-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 px-3 py-1 text-xs font-semibold"
-                                disabled={!onOpenNotes}
-                              >
+                                disabled={!onOpenNotes}>
                                 Lihat {notesArray.length} Catatan
                               </button>
                             ) : (

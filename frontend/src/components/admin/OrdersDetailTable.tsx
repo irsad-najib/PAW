@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,7 +11,7 @@ import {
   getUserDisplayName,
   getMenuName,
 } from "@/lib/types";
-import { formatRupiah, formatDateID } from "@/lib/utils";
+import { formatRupiah } from "@/lib/utils";
 import {
   OrderStatusBadge,
   PaymentStatusBadge,
@@ -75,7 +76,9 @@ export default function OrdersDetailTable({
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
     null
   );
-  const [orderDetailModal, setOrderDetailModal] = useState<TableOrder | null>(null);
+  const [orderDetailModal, setOrderDetailModal] = useState<TableOrder | null>(
+    null
+  );
 
   useEffect(() => {
     setFilters((prev) => ({ ...prev, date: selectedDate || "" }));
@@ -96,7 +99,9 @@ export default function OrdersDetailTable({
   const setPaymentStatus = (orderIds: string[], status: OrderPaymentStatus) => {
     setOrderState((prev) =>
       prev.map((order) =>
-        orderIds.includes(order._id) ? { ...order, paymentStatus: status } : order
+        orderIds.includes(order._id)
+          ? { ...order, paymentStatus: status }
+          : order
       )
     );
   };
@@ -122,12 +127,13 @@ export default function OrdersDetailTable({
       const orderDate = order.orderDates?.[0]
         ? order.orderDates[0].split("T")[0]
         : "";
-        const itemsSummary =
-          order.items && order.items.length > 0
-            ? order.items
+      const itemsSummary =
+        order.items && order.items.length > 0
+          ? order.items
               .map((item) => `${getMenuName(item.menuId)} x${item.quantity}`)
               .join(", ")
-          : "-";      return {
+          : "-";
+      return {
         id: order._id,
         date: orderDate,
         customer: order.customerName ?? getUserDisplayName(order.userId),
@@ -189,7 +195,11 @@ export default function OrdersDetailTable({
     setFilters((prev) => ({ ...prev, [name]: value }));
   };
 
-  const openPaymentModal = (order: TableOrder, mode: "payment" | "status", nextStatus?: OrderStatus) => {
+  const openPaymentModal = (
+    order: TableOrder,
+    mode: "payment" | "status",
+    nextStatus?: OrderStatus
+  ) => {
     setPaymentModal({ order, mode, nextStatus });
   };
 
@@ -249,14 +259,12 @@ export default function OrdersDetailTable({
               className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
               fill="none"
               stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+              viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth="2"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              ></path>
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
             </svg>
           </div>
 
@@ -272,8 +280,7 @@ export default function OrdersDetailTable({
             name="time"
             value={filters.time}
             onChange={handleFilterChange}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-white text-gray-900 text-sm"
-          >
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-white text-gray-900 text-sm">
             <option value="">Semua Waktu</option>
             <option value="Pagi">Pagi</option>
             <option value="Siang">Siang</option>
@@ -284,8 +291,7 @@ export default function OrdersDetailTable({
             name="type"
             value={filters.type}
             onChange={handleFilterChange}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-white text-gray-900 text-sm"
-          >
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-white text-gray-900 text-sm">
             <option value="">Semua Tipe</option>
             <option value="Delivery">Diantar</option>
             <option value="Pickup">Diambil</option>
@@ -295,8 +301,7 @@ export default function OrdersDetailTable({
             name="payment"
             value={filters.payment}
             onChange={handleFilterChange}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-white text-gray-900 text-sm"
-          >
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-white text-gray-900 text-sm">
             <option value="">Semua Pembayaran</option>
             <option value="cash">Cash</option>
             <option value="transfer">Transfer</option>
@@ -306,8 +311,7 @@ export default function OrdersDetailTable({
             name="status"
             value={filters.status}
             onChange={handleFilterChange}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-white text-gray-900 text-sm"
-          >
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-white text-gray-900 text-sm">
             <option value="">Semua Status</option>
             {Object.entries(ORDER_STATUS_LABELS).map(([key, label]) => (
               <option key={key} value={key}>
@@ -366,8 +370,7 @@ export default function OrdersDetailTable({
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
                         onClick={() => setOrderDetailModal(order)}
-                        className="text-blue-600 hover:underline font-medium"
-                      >
+                        className="text-blue-600 hover:underline font-medium">
                         {order.id}
                       </button>
                     </td>
@@ -385,8 +388,7 @@ export default function OrdersDetailTable({
                       {order.type === "Delivery" ? (
                         <span
                           title={order.deliveryAddress || "Alamat belum diisi"}
-                          className="underline decoration-dotted decoration-primary cursor-help"
-                        >
+                          className="underline decoration-dotted decoration-primary cursor-help">
                           Diantar
                         </span>
                       ) : (
@@ -400,8 +402,7 @@ export default function OrdersDetailTable({
                       {order.paymentStatus === "unpaid" ? (
                         <button
                           onClick={() => openPaymentModal(order, "payment")}
-                          className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors"
-                        >
+                          className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors">
                           Belum Lunas
                         </button>
                       ) : (
@@ -434,8 +435,7 @@ export default function OrdersDetailTable({
                                   )
                                 )
                               }
-                              className="px-4 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap"
-                            >
+                              className="px-4 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap">
                               Batalkan
                             </button>
                           )}
@@ -445,7 +445,9 @@ export default function OrdersDetailTable({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className="px-6 py-4 text-center text-gray-500">
+                  <td
+                    colSpan={9}
+                    className="px-6 py-4 text-center text-gray-500">
                     Tidak ada pesanan yang cocok dengan filter.
                   </td>
                 </tr>
@@ -470,8 +472,7 @@ export default function OrdersDetailTable({
               </div>
               <button
                 onClick={() => setOrderDetailModal(null)}
-                className="text-gray-500 hover:text-gray-700"
-              >
+                className="text-gray-500 hover:text-gray-700">
                 ✕
               </button>
             </div>
@@ -520,8 +521,7 @@ export default function OrdersDetailTable({
             <div className="flex justify-end">
               <button
                 onClick={() => setOrderDetailModal(null)}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
-              >
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
                 Tutup
               </button>
             </div>
@@ -558,8 +558,14 @@ export default function OrdersDetailTable({
           onClose={() => setConfirmAction(null)}
           onConfirm={async () => {
             try {
-              await updateOrderStatus(confirmAction.order.id, confirmAction.nextStatus);
-              proceedAfterConfirm(confirmAction.order, confirmAction.nextStatus);
+              await updateOrderStatus(
+                confirmAction.order.id,
+                confirmAction.nextStatus
+              );
+              proceedAfterConfirm(
+                confirmAction.order,
+                confirmAction.nextStatus
+              );
             } catch (err: any) {
               console.error("Gagal update status:", err.message);
               alert("Gagal update status: " + err.message);

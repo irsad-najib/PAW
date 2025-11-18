@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -18,10 +19,16 @@ export default function CheckoutPage() {
   const { user, loading: authLoading } = useAuth();
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
-  const [deliveryType, setDeliveryType] = useState<"Delivery" | "Pickup">("Delivery");
-  const [deliveryTime, setDeliveryTime] = useState<"Pagi" | "Siang" | "Sore">("Pagi");
+  const [deliveryType, setDeliveryType] = useState<"Delivery" | "Pickup">(
+    "Delivery"
+  );
+  const [deliveryTime, setDeliveryTime] = useState<"Pagi" | "Siang" | "Sore">(
+    "Pagi"
+  );
   const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer">(
+    "cash"
+  );
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [loading, setLoading] = useState(false);
@@ -116,7 +123,8 @@ export default function CheckoutPage() {
         orderDates: selectedDates,
         deliveryType,
         deliveryTime,
-        deliveryAddress: deliveryType === "Delivery" ? deliveryAddress : undefined,
+        deliveryAddress:
+          deliveryType === "Delivery" ? deliveryAddress : undefined,
         paymentMethod,
         customerName,
         customerPhone,
@@ -133,7 +141,10 @@ export default function CheckoutPage() {
       router.push("/orders");
     } catch (err: any) {
       console.error("Order error:", err);
-      setError(err.response?.data?.message || "Gagal membuat pesanan. Silakan coba lagi.");
+      setError(
+        err.response?.data?.message ||
+          "Gagal membuat pesanan. Silakan coba lagi."
+      );
     } finally {
       setLoading(false);
     }
@@ -308,7 +319,9 @@ export default function CheckoutPage() {
                     <div key={dateKey} className="space-y-2">
                       <p className="font-semibold text-gray-800">{label}</p>
                       {items.map((item) => (
-                        <div key={`${dateKey}-${item.menu._id}`} className="flex gap-3">
+                        <div
+                          key={`${dateKey}-${item.menu._id}`}
+                          className="flex gap-3">
                           {item.menu.image ? (
                             <Image
                               src={item.menu.image}

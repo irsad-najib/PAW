@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import axios from "axios";
 
 const API_BASE =
@@ -19,13 +21,14 @@ type FetchOptions = {
 function getToken() {
   if (typeof window === "undefined") return "";
   return (
-    localStorage.getItem("token") ||
-    localStorage.getItem("accessToken") ||
-    ""
+    localStorage.getItem("token") || localStorage.getItem("accessToken") || ""
   );
 }
 
-async function apiRequest<T>(path: string, opts: FetchOptions = {}): Promise<T> {
+async function apiRequest<T>(
+  path: string,
+  opts: FetchOptions = {}
+): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(opts.headers || {}),
@@ -34,7 +37,7 @@ async function apiRequest<T>(path: string, opts: FetchOptions = {}): Promise<T> 
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  console.log(`🌐 API Request: ${opts.method || 'GET'} ${API_BASE}${path}`);
+  console.log(`🌐 API Request: ${opts.method || "GET"} ${API_BASE}${path}`);
 
   const res = await fetch(`${API_BASE}${path}`, {
     method: opts.method || "GET",
@@ -48,7 +51,7 @@ async function apiRequest<T>(path: string, opts: FetchOptions = {}): Promise<T> 
   if (!res.ok) {
     const errorText = await res.text();
     console.error(`❌ API Error [${res.status}]:`, errorText);
-    
+
     try {
       const errorJson = JSON.parse(errorText);
       throw new Error(errorJson.message || errorText || res.statusText);
@@ -56,15 +59,14 @@ async function apiRequest<T>(path: string, opts: FetchOptions = {}): Promise<T> 
       throw new Error(errorText || res.statusText);
     }
   }
-  
+
   const contentType = res.headers.get("content-type");
   if (contentType && contentType.includes("application/json")) {
     return res.json();
   }
-  // @ts-ignore
+  // @ts-expect-error
   return null;
 }
-
 
 export type AdminOrderQuery = {
   search?: string;
@@ -83,9 +85,12 @@ export async function fetchAdminOrders(params: AdminOrderQuery = {}) {
     if (val != null && val !== "") searchParams.set(key, String(val));
   });
   const qs = searchParams.toString();
-  return apiRequest<{ page: number; limit: number; total: number; items: any[] }>(
-    `/orders/admin${qs ? `?${qs}` : ""}`
-  );
+  return apiRequest<{
+    page: number;
+    limit: number;
+    total: number;
+    items: any[];
+  }>(`/orders/admin${qs ? `?${qs}` : ""}`);
 }
 
 export function updateOrderStatus(id: string, orderStatus: string) {
@@ -109,7 +114,10 @@ export function markGroupPaid(groupId: string) {
   });
 }
 
-export function batchUpdateOrderStatus(orderIds: string[], orderStatus: string) {
+export function batchUpdateOrderStatus(
+  orderIds: string[],
+  orderStatus: string
+) {
   return apiRequest(`/orders/batch/status`, {
     method: "PATCH",
     body: { orderIds, orderStatus },
@@ -166,7 +174,8 @@ export async function createMenu(payload: AdminMenuPayload) {
   if (payload.description) form.append("description", payload.description);
   if (payload.stock != null) form.append("stock", String(payload.stock));
   if (payload.date) form.append("date", payload.date);
-  if (payload.isAvailable != null) form.append("isAvailable", String(payload.isAvailable));
+  if (payload.isAvailable != null)
+    form.append("isAvailable", String(payload.isAvailable));
   if (payload.image instanceof File) {
     form.append("image", payload.image);
   }
@@ -193,7 +202,8 @@ export async function updateMenu(id: string, payload: AdminMenuPayload) {
   if (payload.description) form.append("description", payload.description);
   if (payload.stock != null) form.append("stock", String(payload.stock));
   if (payload.date) form.append("date", payload.date);
-  if (payload.isAvailable != null) form.append("isAvailable", String(payload.isAvailable));
+  if (payload.isAvailable != null)
+    form.append("isAvailable", String(payload.isAvailable));
   if (payload.image instanceof File) {
     form.append("image", payload.image);
   } else if (typeof payload.image === "string") {
@@ -227,14 +237,22 @@ export async function fetchUserProfile() {
   return apiRequest<any>(`/users/profile`);
 }
 
-export async function loginUser(credentials: { username: string; password: string }) {
+export async function loginUser(credentials: {
+  username: string;
+  password: string;
+}) {
   return apiRequest<{ token: string; user: any }>(`/auth/login`, {
     method: "POST",
     body: credentials,
   });
 }
 
-export async function registerUser(data: { username: string; password: string; name?: string; phone?: string }) {
+export async function registerUser(data: {
+  username: string;
+  password: string;
+  name?: string;
+  phone?: string;
+}) {
   return apiRequest<{ token: string; user: any }>(`/auth/register`, {
     method: "POST",
     body: data,
