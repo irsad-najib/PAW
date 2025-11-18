@@ -219,7 +219,7 @@ router.post("/", authenticateToken, requireAdmin, upload.single('image'), async 
 });
 
 // PUT full replace (Admin)
-router.put("/:id", authenticateToken, requireAdmin, async (req, res) => {
+router.put("/:id", authenticateToken, requireAdmin, upload.single("image"), async (req, res) => {
   try {
     const { name, price, description, stock, date, isAvailable } = req.body;
     if (!name || price == null) {
@@ -229,29 +229,31 @@ router.put("/:id", authenticateToken, requireAdmin, async (req, res) => {
     // ✅ PERBAIKAN: Handle both JSON & form-data
     const parsedIsAvailable = parseBoolean(isAvailable);
     
-    const update = {
-      name: name.trim(),
-      price: Number(price),
-      description: description?.trim() || undefined,
-      stock: stock != null ? Number(stock) : 0,
-      image: req.body.image?.trim() || undefined,
-      date: date ? new Date(date) : undefined,
-      isAvailable: parsedIsAvailable !== undefined ? parsedIsAvailable : true,
-    };
-    
-    const doc = await Menu.findByIdAndUpdate(req.params.id, update, {
-      new: true,
-      runValidators: true,
-    });
-    if (!doc) return res.status(404).json({ message: "Menu not found" });
-    res.json(doc);
+    const existing = await Menu.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: "Menu not found" });
+
+    const imagePath = req.file
+      ? req.file.path
+      : req.body.image?.trim() || existing.image;
+
+    existing.name = name.trim();
+    existing.price = Number(price);
+    existing.description = description?.trim() || undefined;
+    existing.stock = stock != null ? Number(stock) : 0;
+    existing.date = date ? new Date(date) : undefined;
+    existing.isAvailable =
+      parsedIsAvailable !== undefined ? parsedIsAvailable : existing.isAvailable;
+    existing.image = imagePath;
+
+    const saved = await existing.save();
+    res.json(saved);
   } catch (e) {
     res.status(400).json({ message: e.message });
   }
 });
 
 // PATCH partial update (Admin)
-router.patch("/:id", authenticateToken, requireAdmin, async (req, res) => {
+router.patch("/:id", authenticateToken, requireAdmin, upload.single("image"), async (req, res) => {
   try {
     const allowed = [
       "name",
@@ -262,29 +264,31 @@ router.patch("/:id", authenticateToken, requireAdmin, async (req, res) => {
       "date",
       "isAvailable",
     ];
-    const updates = {};
+    const doc = await Menu.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: "Menu not found" });
+
     for (const k of Object.keys(req.body)) {
-      if (allowed.includes(k)) {
-        if (k === "price" || k === "stock") {
-          updates[k] = Number(req.body[k]);
-        } else if (k === "date") {
-          updates[k] = new Date(req.body[k]);
-        } else if (k === "isAvailable") {
-          updates[k] = parseBoolean(req.body[k]);
-        } else {
-          updates[k] = req.body[k];
-        }
+      if (!allowed.includes(k)) continue;
+      if (k === "price" || k === "stock") {
+        doc[k] = Number(req.body[k]);
+      } else if (k === "date") {
+        doc[k] = new Date(req.body[k]);
+      } else if (k === "isAvailable") {
+        const p = parseBoolean(req.body[k]);
+        if (p !== undefined) doc[k] = p;
+      } else if (k === "name" || k === "description") {
+        doc[k] = req.body[k]?.trim();
+      } else {
+        doc[k] = req.body[k];
       }
     }
-    if (updates.name) updates.name = updates.name.trim();
-    
-    const doc = await Menu.findByIdAndUpdate(
-      req.params.id,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
-    if (!doc) return res.status(404).json({ message: "Menu not found" });
-    res.json(doc);
+
+    if (req.file) {
+      doc.image = req.file.path;
+    }
+
+    const saved = await doc.save();
+    res.json(saved);
   } catch (e) {
     res.status(400).json({ message: e.message });
   }

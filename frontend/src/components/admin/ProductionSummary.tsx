@@ -48,7 +48,19 @@ export default function ProductionSummary({
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
-    setMealStatuses(mealData.map(() => "pending"));
+    setMealStatuses((prev) => {
+      const preserved = new Map<string, MealStatus>();
+      mealData.forEach((meal, idx) => {
+        const key = `${meal.mealTime}-${idx}`;
+        if (prev[idx]) {
+          preserved.set(key, prev[idx]);
+        }
+      });
+      return mealData.map((meal, idx) => {
+        const key = `${meal.mealTime}-${idx}`;
+        return preserved.get(key) ?? "pending";
+      });
+    });
   }, [mealData]);
 
   const requestStatusChange = (
@@ -120,51 +132,40 @@ export default function ProductionSummary({
                 </h3>
 
                 <div className="flex items-center gap-2">
-                  {status === "pending" && (
-                    <button
-                      onClick={() =>
-                        requestStatusChange(
-                          index,
-                          "processing",
-                          "processing",
-                          meal.mealTime,
-                          "Proses Pesanan",
-                          meal.orderIds || []
-                        )
-                      }
-                      disabled={
-                        updating || !meal.orderIds || meal.orderIds.length === 0
-                      }
-                      className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-lg hover:bg-yellow-600 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
-                      {updating ? "Updating..." : "Proses Pesanan"}
-                    </button>
-                  )}
+                  <button
+                    onClick={() =>
+                      requestStatusChange(
+                        index,
+                        "processing",
+                        "processing",
+                        meal.mealTime,
+                        "Proses Pesanan",
+                        meal.orderIds || []
+                      )
+                    }
+                    disabled={updating || !meal.orderIds || meal.orderIds.length === 0}
+                    className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-lg hover:bg-yellow-600 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
+                    {updating && status !== "ready" ? "Updating..." : "Proses Pesanan"}
+                  </button>
 
-                  {status === "processing" && (
-                    <button
-                      onClick={() =>
-                        requestStatusChange(
-                          index,
-                          "ready",
-                          "ready",
-                          meal.mealTime,
-                          "Tandai Siap",
-                          meal.orderIds || []
-                        )
-                      }
-                      disabled={
-                        updating || !meal.orderIds || meal.orderIds.length === 0
-                      }
-                      className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
-                      {updating ? "Updating..." : "Tandai Siap"}
-                    </button>
-                  )}
+                  <button
+                    onClick={() =>
+                      requestStatusChange(
+                        index,
+                        "ready",
+                        "ready",
+                        meal.mealTime,
+                        "Tandai Siap",
+                        meal.orderIds || []
+                      )
+                    }
+                    disabled={
+                      updating || !meal.orderIds || meal.orderIds.length === 0
+                    }
+                    className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
+                    {updating && status !== "pending" ? "Updating..." : "Tandai Siap"}
+                  </button>
 
-                  {status === "ready" && (
-                    <span className="px-3 py-1 text-sm font-semibold text-green-700 bg-green-100 rounded-lg">
-                      Semua Pesanan Siap
-                    </span>
-                  )}
                 </div>
               </div>
 

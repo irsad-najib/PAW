@@ -36,7 +36,7 @@ export interface OrderItem {
 }
 
 // dari orderSchema
-export type OrderPaymentStatus = 'pending' | 'paid' | 'unpaid';
+export type OrderPaymentStatus = 'pending' | 'paid' | 'unpaid' | 'refunded';
 export type OrderStatus = 'accepted' | 'processing' | 'ready' | 'completed' | 'cancelled';
 export type OrderDeliveryType = 'Delivery' | 'Pickup';
 export type OrderDeliveryTime = 'Pagi' | 'Siang' | 'Sore';

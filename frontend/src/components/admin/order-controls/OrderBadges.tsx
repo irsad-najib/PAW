@@ -43,12 +43,14 @@ export const PAYMENT_STATUS_LABELS: Record<OrderPaymentStatus, string> = {
   pending: "Menunggu",
   paid: "Lunas",
   unpaid: "Belum Lunas",
+  refunded: "Refund",
 };
 
 const PAYMENT_STATUS_STYLE: Record<OrderPaymentStatus, string> = {
   pending: "bg-yellow-100 text-yellow-700 border border-yellow-300",
   paid: "bg-green-100 text-green-700 border border-green-300",
   unpaid: "bg-red-100 text-red-700 border border-red-300",
+  refunded: "bg-blue-100 text-blue-700 border border-blue-300",
 };
 
 export function PaymentStatusBadge({

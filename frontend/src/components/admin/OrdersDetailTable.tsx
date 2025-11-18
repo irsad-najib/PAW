@@ -78,6 +78,7 @@ export default function OrdersDetailTable({
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
     null
   );
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [orderDetailModal, setOrderDetailModal] = useState<TableOrder | null>(
     null
   );
@@ -122,6 +123,14 @@ export default function OrdersDetailTable({
 
   const proceedAfterConfirm = (order: TableOrder, nextStatus: OrderStatus) => {
     handleAdvanceStatus(order.id, nextStatus);
+  };
+
+  const requestCancel = (order: TableOrder) => {
+    setConfirmAction({
+      order,
+      nextStatus: "cancelled",
+      label: "Batalkan Pesanan",
+    });
   };
 
   const tableOrders = useMemo<TableOrder[]>(() => {
@@ -429,17 +438,12 @@ export default function OrdersDetailTable({
                         {order.orderStatus !== "completed" &&
                           order.orderStatus !== "cancelled" && (
                             <button
-                              onClick={() =>
-                                setOrderState((prev) =>
-                                  prev.map((o) =>
-                                    o._id === order.id
-                                      ? { ...o, orderStatus: "cancelled" }
-                                      : o
-                                  )
-                                )
-                              }
-                              className="px-4 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap">
-                              Batalkan
+                              onClick={() => requestCancel(order)}
+                              disabled={cancellingId === order.id}
+                              className="px-4 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed">
+                              {cancellingId === order.id
+                                ? "Memproses..."
+                                : "Batalkan"}
                             </button>
                           )}
                       </div>
@@ -561,19 +565,38 @@ export default function OrdersDetailTable({
           onClose={() => setConfirmAction(null)}
           onConfirm={async () => {
             try {
-              await updateOrderStatus(
+              if (confirmAction.nextStatus === "cancelled") {
+                setCancellingId(confirmAction.order.id);
+              }
+              const updated = await updateOrderStatus(
                 confirmAction.order.id,
                 confirmAction.nextStatus
               );
-              proceedAfterConfirm(
-                confirmAction.order,
-                confirmAction.nextStatus
-              );
+              const updatedOrder = (updated as any)?.order;
+              if (updatedOrder) {
+                setOrderState((prev) =>
+                  prev.map((o) =>
+                    o._id === updatedOrder._id
+                      ? {
+                          ...o,
+                          orderStatus: updatedOrder.orderStatus,
+                          paymentStatus: updatedOrder.paymentStatus ?? o.paymentStatus,
+                        }
+                      : o
+                  )
+                );
+              } else {
+                proceedAfterConfirm(
+                  confirmAction.order,
+                  confirmAction.nextStatus
+                );
+              }
               onDataChanged?.();
             } catch (err: any) {
               console.error("Gagal update status:", err.message);
               alert("Gagal update status: " + err.message);
             }
+            setCancellingId(null);
             setConfirmAction(null);
           }}
         />
