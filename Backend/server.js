@@ -79,9 +79,9 @@ const corsOptions = {
   origin: [
     "http://localhost:3000",
     "http://localhost:3001",
-    "https://paw-fe-irsad-najibs-projects.vercel.app",
     "https://paw-be-weld.vercel.app",
     "https://paw-be-weld.vercel.app",
+    "https://paw-8.netlify.app",
     process.env.FRONTEND_URL,
   ].filter(Boolean),
   credentials: true,
