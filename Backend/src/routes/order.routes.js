@@ -834,3 +834,529 @@ router.get("/group/:groupId", authenticateToken, async (req, res) => {
     return res.status(500).json({ message: e.message });
   }
 });
+
+// IMPORTANT: Define /admin routes BEFORE /:id routes!
+
+/**
+ * @swagger
+ * /api/orders/admin/summary:
+ *   get:
+ *     summary: Get order summary for a specific date (Admin only)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: date
+ *         schema:
+ *           type: string
+ *         description: Date in YYYY-MM-DD format
+ *     responses:
+ *       200:
+ *         description: Order summary
+ */
+router.get("/admin/summary", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { date } = req.query;
+    const dateISO = date || new Date().toISOString().split("T")[0];
+    
+    const startOfDay = new Date(dateISO);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(dateISO);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const orders = await Order.find({
+      orderDates: {
+        $elemMatch: {
+          $gte: startOfDay.toISOString(),
+          $lte: endOfDay.toISOString()
+        }
+      }
+    }).populate("items.menuId");
+
+    const summary = {
+      totalOrders: orders.length,
+      totalRevenue: orders.reduce((sum, o) => sum + (o.totalPrice || 0), 0),
+      byStatus: {},
+      byPaymentStatus: {},
+      byDeliveryTime: {}
+    };
+
+    orders.forEach(order => {
+      summary.byStatus[order.orderStatus] = (summary.byStatus[order.orderStatus] || 0) + 1;
+      summary.byPaymentStatus[order.paymentStatus] = (summary.byPaymentStatus[order.paymentStatus] || 0) + 1;
+      summary.byDeliveryTime[order.deliveryTime] = (summary.byDeliveryTime[order.deliveryTime] || 0) + 1;
+    });
+
+    res.json({
+      date: dateISO,
+      summary,
+      orders
+    });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/orders/admin:
+ *   get:
+ *     summary: Get all orders (Admin only, with filters)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get("/admin", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const {
+      search,
+      status,
+      paymentStatus,
+      deliveryTime,
+      deliveryType,
+      date,
+      page = 1,
+      limit = 50
+    } = req.query;
+
+    const query = {};
+    
+    if (search) {
+      query.$or = [
+        { _id: { $regex: search, $options: "i" } },
+        { customerName: { $regex: search, $options: "i" } }
+      ];
+    }
+    if (status) query.orderStatus = status;
+    if (paymentStatus) query.paymentStatus = paymentStatus;
+    if (deliveryTime) query.deliveryTime = deliveryTime;
+    if (deliveryType) query.deliveryType = deliveryType;
+    if (date) {
+      const dateISO = new Date(date).toISOString().split("T")[0];
+      query.orderDates = {
+        $elemMatch: {
+          $gte: dateISO,
+          $lt: new Date(new Date(dateISO).getTime() + 86400000).toISOString()
+        }
+      };
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [items, total] = await Promise.all([
+      Order.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate("items.menuId")
+        .populate("userId"),
+      Order.countDocuments(query)
+    ]);
+
+    res.json({ page: parseInt(page), limit: parseInt(limit), total, items });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/orders/batch/status:
+ *   patch:
+ *     summary: Update status for multiple orders (Admin only)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch("/batch/status", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { orderIds, orderStatus } = req.body;
+    
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return res.status(400).json({ message: "orderIds must be a non-empty array" });
+    }
+    
+    if (!["processing", "ready", "completed", "cancelled"].includes(orderStatus)) {
+      return res.status(400).json({ message: "Invalid orderStatus" });
+    }
+
+    const result = await Order.updateMany(
+      { _id: { $in: orderIds } },
+      { $set: { orderStatus } }
+    );
+
+    res.json({ 
+      message: `Updated ${result.modifiedCount} orders`,
+      modifiedCount: result.modifiedCount
+    });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// NOW define /:id routes (these must come AFTER /admin routes)
+
+// Detail order (owner atau admin)
+router.get("/:id", authenticateToken, async (req, res) => {
+  try {
+    const doc = await Order.findById(req.params.id).populate("items.menuId");
+    if (!doc) return res.status(404).json({ message: "Order not found" });
+    if (String(doc.userId) !== req.auth.userId && req.auth.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    res.json(doc);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/orders:
+ *   post:
+ *     summary: Buat pesanan baru (single-day atau multi-day split)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/OrderInput'
+ *     responses:
+ *       201:
+ *         description: Created order(s)
+ *         content:
+ *           application/json:
+ *             oneOf:
+ *               - $ref: '#/components/responses/CreateOrderSingle/content/application~1json/schema'
+ *               - $ref: '#/components/responses/CreateOrderMulti/content/application~1json/schema'
+ *               - $ref: '#/components/responses/CreateOrderMultiTransfer/content/application~1json/schema'
+ *       400:
+ *         description: Data tidak valid
+ */
+router.post("/", authenticateToken, async (req, res) => {
+  // Refactor: multi-day -> split menjadi beberapa order (satu per tanggal)
+  try {
+    const {
+      items,
+      deliveryType,
+      deliveryAddress,
+      deliveryTime,
+      paymentMethod,
+    } = req.body;
+    const userId = req.auth.userId;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Items required" });
+    }
+    if (!deliveryType || !["Delivery", "Pickup"].includes(deliveryType)) {
+      return res.status(400).json({ message: "deliveryType invalid" });
+    }
+    if (!deliveryTime || !["Pagi", "Siang", "Sore"].includes(deliveryTime)) {
+      return res.status(400).json({ message: "deliveryTime invalid" });
+    }
+    if (!paymentMethod || !["cash", "transfer"].includes(paymentMethod)) {
+      return res.status(400).json({ message: "paymentMethod invalid" });
+    }
+    if (deliveryType === "Delivery" && !deliveryAddress) {
+      return res
+        .status(400)
+        .json({ message: "deliveryAddress required for Delivery" });
+    }
+
+    const menuIds = items.map((i) => i.menuId);
+    const uniqueIds = new Set(menuIds.map((id) => String(id)));
+    if (uniqueIds.size !== menuIds.length) {
+      return res
+        .status(400)
+        .json({ message: "Duplicate menuId in items not allowed" });
+    }
+
+    const menus = await Menu.find({ _id: { $in: menuIds } });
+    if (menus.length !== menuIds.length) {
+      const foundIds = new Set(menus.map((m) => String(m._id)));
+      const missing = menuIds.filter((id) => !foundIds.has(String(id)));
+      return res
+        .status(404)
+        .json({ message: `Menu not found: ${missing.join(",")}` });
+    }
+
+    const menuMap = new Map(menus.map((m) => [String(m._id), m]));
+
+    // Group items by menu.date
+    const groups = new Map(); // dateISO -> { items: [], date: Date }
+    for (const it of items) {
+      if (!it.menuId || !it.quantity || it.quantity <= 0) {
+        return res.status(400).json({ message: "Invalid item entry" });
+      }
+      const menu = menuMap.get(String(it.menuId));
+      if (!menu) {
+        return res.status(404).json({ message: `Menu ${it.menuId} not found` });
+      }
+      if (!menu.isAvailable) {
+        return res
+          .status(400)
+          .json({ message: `Menu ${menu.name} not available` });
+      }
+      if (!menu.date) {
+        return res
+          .status(400)
+          .json({ message: `Menu ${menu.name} tidak memiliki date` });
+      }
+      if (menu.stock != null && menu.stock < it.quantity) {
+        return res
+          .status(400)
+          .json({ message: `Stock not enough for ${menu.name}` });
+      }
+      const dateISO = menu.date.toISOString();
+      if (!groups.has(dateISO)) {
+        groups.set(dateISO, { date: menu.date, items: [] });
+      }
+      groups.get(dateISO).items.push({
+        menuId: menu._id,
+        quantity: it.quantity,
+        specialNotes: it.specialNotes || "",
+        _price: menu.price, // attach for later total calc
+      });
+    }
+
+    // STOCK CHECK PASS -> decrement stocks
+    for (const it of items) {
+      const m = menuMap.get(String(it.menuId));
+      if (m.stock != null) {
+        m.stock -= it.quantity;
+        await m.save();
+      }
+    }
+
+    const multiDay = groups.size > 1;
+    // Generate groupId for ANY multi-day order (cash or transfer) so admin dapat set paid per group
+    let groupId = null;
+    if (multiDay) {
+      groupId = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+    }
+
+    const createdOrders = [];
+    // Sort dates ASC
+    const sortedGroups = Array.from(groups.values()).sort(
+      (a, b) => a.date - b.date
+    );
+    for (const [idx, g] of sortedGroups.entries()) {
+      const totalPrice = g.items.reduce(
+        (sum, it) => sum + it._price * it.quantity,
+        0
+      );
+      const payload = {
+        userId,
+        items: g.items.map(({ _price, ...rest }) => rest),
+        orderDates: [g.date],
+        deliveryType,
+        deliveryAddress: deliveryType === "Delivery" ? deliveryAddress : "",
+        deliveryTime,
+        paymentMethod,
+        paymentStatus:
+          paymentMethod === "cash"
+            ? "unpaid"
+            : multiDay
+            ? "pending"
+            : "pending",
+        totalPrice,
+        groupId: groupId,
+        isGroupMaster: groupId ? idx === 0 : false,
+      };
+      const orderDoc = await Order.create(payload);
+      createdOrders.push(orderDoc);
+    }
+
+    if (groupId) {
+      // Send WhatsApp notification for order creation
+      try {
+        const user = await User.findById(userId);
+        if (user && user.phone) {
+          const totalAmount = createdOrders.reduce(
+            (sum, o) => sum + o.totalPrice,
+            0
+          );
+          const message = `Halo ${
+            user.name || user.username
+          }! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Jumlah pesanan: ${
+            createdOrders.length
+          } hari\n- Total: Rp ${totalAmount.toLocaleString(
+            "id-ID"
+          )}\n- Metode: ${
+            paymentMethod === "cash" ? "Tunai" : "Transfer"
+          }\n- Status: ${
+            paymentMethod === "cash" ? "Belum Bayar" : "Menunggu Pembayaran"
+          }\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (notifError) {
+        console.error("Failed to send order notification:", notifError);
+        // Don't fail the order creation if notification fails
+      }
+
+      return res.status(201).json({
+        message: `Multi-day orders created (${paymentMethod} group ${
+          paymentMethod === "cash" ? "unpaid" : "pending"
+        })`,
+        groupId,
+        orders: createdOrders,
+      });
+    }
+
+    if (multiDay) {
+      // Send WhatsApp notification for multi-day order
+      try {
+        const user = await User.findById(userId);
+        if (user && user.phone) {
+          const totalAmount = createdOrders.reduce(
+            (sum, o) => sum + o.totalPrice,
+            0
+          );
+          const message = `Halo ${
+            user.name || user.username
+          }! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Jumlah pesanan: ${
+            createdOrders.length
+          } hari\n- Total: Rp ${totalAmount.toLocaleString(
+            "id-ID"
+          )}\n- Metode: ${
+            paymentMethod === "cash" ? "Tunai" : "Transfer"
+          }\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (notifError) {
+        console.error("Failed to send order notification:", notifError);
+      }
+
+      return res
+        .status(201)
+        .json({ message: "Multi-day orders created", orders: createdOrders });
+    } else {
+      // Send WhatsApp notification for single order
+      try {
+        const user = await User.findById(userId);
+        if (user && user.phone) {
+          const order = createdOrders[0];
+          const message = `Halo ${
+            user.name || user.username
+          }! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Order ID: ${order._id
+            .toString()
+            .slice(-8)
+            .toUpperCase()}\n- Total: Rp ${order.totalPrice.toLocaleString(
+            "id-ID"
+          )}\n- Tanggal: ${new Date(order.orderDates[0]).toLocaleDateString(
+            "id-ID"
+          )}\n- Waktu: ${order.deliveryTime}\n- Metode: ${
+            paymentMethod === "cash" ? "Tunai" : "Transfer"
+          }\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (notifError) {
+        console.error("Failed to send order notification:", notifError);
+      }
+
+      return res
+        .status(201)
+        .json({ message: "Order created", order: createdOrders[0] });
+    }
+  } catch (e) {
+    console.error("Error creating order multi-day split", e);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Admin update status (processing, completed, cancelled)
+router.patch(
+  "/:id/status",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { orderStatus } = req.body;
+      if (!["processing", "completed", "cancelled"].includes(orderStatus)) {
+        return res.status(400).json({ message: "Invalid orderStatus" });
+      }
+      const doc = await Order.findById(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Order not found" });
+      if (doc.orderStatus === "cancelled") {
+        return res.status(400).json({ message: "Already cancelled" });
+      }
+
+      const previousStatus = doc.orderStatus;
+
+      // Jika cancel & belum restore stok
+      if (orderStatus === "cancelled" && !doc.stockRestored) {
+        for (const it of doc.items) {
+          const menu = await Menu.findById(it.menuId);
+          if (menu && menu.stock != null) {
+            menu.stock += it.quantity; // restore
+            await menu.save();
+          }
+        }
+        doc.stockRestored = true;
+      }
+      doc.orderStatus = orderStatus;
+      await doc.save();
+
+      // Send WhatsApp notification when order is completed (ready)
+      if (orderStatus === "completed" && previousStatus !== "completed") {
+        try {
+          const user = await User.findById(doc.userId);
+          if (user && user.phone) {
+            const message = `Halo ${
+              user.name || user.username
+            }! ✅\n\nPesanan Anda sudah READY! 🎉\n\nOrder ID: ${doc._id
+              .toString()
+              .slice(-8)
+              .toUpperCase()}\nTanggal: ${new Date(
+              doc.orderDates[0]
+            ).toLocaleDateString("id-ID")}\nWaktu: ${
+              doc.deliveryTime
+            }\n\nPesanan Anda sudah siap untuk ${
+              doc.deliveryType === "Delivery" ? "diantar" : "diambil"
+            }.\n\nTerima kasih! 🍱`;
+            await sendWhatsAppNotification(user.phone, message);
+          }
+        } catch (notifError) {
+          console.error("Failed to send completion notification:", notifError);
+        }
+      }
+
+      res.json({ message: "Status updated", order: doc });
+    } catch (e) {
+      res.status(500).json({ message: e.message });
+    }
+  }
+);
+
+// Admin cancel explicit endpoint (alias status=cancelled)
+router.post(
+  "/:id/cancel",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const doc = await Order.findById(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Order not found" });
+      if (doc.orderStatus === "cancelled")
+        return res.status(400).json({ message: "Already cancelled" });
+      if (!doc.stockRestored) {
+        for (const it of doc.items) {
+          const menu = await Menu.findById(it.menuId);
+          if (menu && menu.stock != null) {
+            menu.stock += it.quantity;
+            await menu.save();
+          }
+        }
+        doc.stockRestored = true;
+      }
+      doc.orderStatus = "cancelled";
+      await doc.save();
+      res.json({ message: "Order cancelled", order: doc });
+    } catch (e) {
+      res.status(500).json({ message: e.message });
+    }
+  }
+);
