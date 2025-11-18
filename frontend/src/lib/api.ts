@@ -178,6 +178,9 @@ export async function createMenu(payload: AdminMenuPayload) {
     form.append("isAvailable", String(payload.isAvailable));
   if (payload.image instanceof File) {
     form.append("image", payload.image);
+  } else if (typeof payload.image === "string" && payload.image) {
+    // allow reusing existing image path when copying menu from hari sebelumnya
+    form.append("image", payload.image);
   }
 
   const token = getToken();

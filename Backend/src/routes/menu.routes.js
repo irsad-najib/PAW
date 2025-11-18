@@ -181,7 +181,7 @@ router.post("/", authenticateToken, requireAdmin, upload.single('image'), async 
     console.log('📥 Request Body:', req.body);
     console.log('📷 File:', req.file ? 'Uploaded to ' + req.file.path : 'No file');
     
-    const { name, price, description, stock, date, isAvailable } = req.body;
+    const { name, price, description, stock, date, isAvailable, image } = req.body;
     
     // Validasi
     if (!name || typeof name !== "string" || name.trim() === "") {
@@ -191,7 +191,8 @@ router.post("/", authenticateToken, requireAdmin, upload.single('image'), async 
       return res.status(400).json({ message: "Price must be a positive number" });
     }
     
-    const imageUrl = req.file ? req.file.path : null;
+    // Gunakan file upload jika ada, fallback ke image string (mis. copy menu lama)
+    const imageUrl = req.file ? req.file.path : (typeof image === "string" && image.trim() ? image.trim() : null);
     
     const parsedIsAvailable = parseBoolean(isAvailable);
     
