@@ -1,0 +1,75 @@
+// KAMUS BARU: Sesuai dengan Skema Mongoose Anda
+
+// dari userSchema
+export interface User {
+  _id: string;
+  userID: string;
+  username: string;
+  email?: string;
+  role: 'user' | 'admin';
+  name?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// dari menuSchema
+export interface Menu {
+  _id: string;
+  name: string;
+  price: number;
+  description?: string;
+  stock: number;
+  image?: string;
+  date: string; // Menggunakan string ISO untuk kemudahan
+  isAvailable: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// dari orderItemSchema (sub-dokumen)
+export interface OrderItem {
+  _id: string; // Mongoose akan menambah _id
+  menuId: string; // Kita anggap di frontend kita hanya butuh ID-nya
+  quantity: number;
+  specialNotes?: string;
+}
+
+// dari orderSchema
+export type OrderPaymentStatus = 'pending' | 'paid' | 'unpaid';
+export type OrderStatus = 'accepted' | 'processing' | 'ready' | 'completed' | 'cancelled';
+export type OrderDeliveryType = 'Delivery' | 'Pickup';
+export type OrderDeliveryTime = 'Pagi' | 'Siang' | 'Sore';
+export type OrderPaymentMethod = 'cash' | 'transfer'; 
+
+export interface Order {
+  _id: string;
+  userId: string; // ID dari User
+  groupId?: string;
+  items: OrderItem[];
+  orderDates: string[]; // Array string ISO
+  deliveryType: OrderDeliveryType;
+  deliveryAddress?: string;
+  deliveryTime: OrderDeliveryTime;
+  paymentMethod: OrderPaymentMethod;
+  paymentReference?: string;
+  totalPrice: number;
+  paymentStatus: OrderPaymentStatus;
+  orderStatus: OrderStatus;
+  orderId?: string; // Untuk Midtrans
+  midtransToken?: string;
+  customerName?: string; // Nama customer (bisa dari User atau input)
+  customerPhone?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// dari holidaySchema
+export interface Holiday {
+  _id: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+  createdAt: string;
+  updatedAt: string;
+}

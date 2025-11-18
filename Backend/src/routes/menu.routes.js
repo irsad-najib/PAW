@@ -2,12 +2,20 @@ const express = require("express");
 const router = express.Router();
 const Menu = require("../models/menu.model");
 const authenticateToken = require("../middleware/JWT");
+const upload = require("../middleware/upload");
 
 function requireAdmin(req, res, next) {
   if (!req.auth || req.auth.role !== "admin") {
     return res.status(403).json({ message: "Forbidden: admin only" });
   }
   next();
+}
+
+function parseBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
 }
 
 /**
@@ -48,7 +56,6 @@ function requireAdmin(req, res, next) {
  *       required:
  *         - name
  *         - price
- *         - category
  *       properties:
  *         name:
  *           type: string
@@ -169,28 +176,44 @@ router.get("/:id", async (req, res) => {
  *       403:
  *         description: Tidak memiliki akses
  */
-router.post("/", authenticateToken, requireAdmin, async (req, res) => {
+router.post("/", authenticateToken, requireAdmin, upload.single('image'), async (req, res) => {
   try {
+    console.log('📥 Request Body:', req.body);
+    console.log('📷 File:', req.file ? 'Uploaded to ' + req.file.path : 'No file');
+    
     const { name, price, description, stock, date, isAvailable } = req.body;
-    if (!name || typeof name !== "string") {
-      return res.status(400).json({ message: "Name is required" });
+    
+    // Validasi
+    if (!name || typeof name !== "string" || name.trim() === "") {
+      return res.status(400).json({ message: "Name is required and must be non-empty" });
     }
-    if (price == null || isNaN(price) || Number(price) < 0) {
-      return res
-        .status(400)
-        .json({ message: "Price must be a positive number" });
+    if (price == null || isNaN(Number(price)) || Number(price) < 0) {
+      return res.status(400).json({ message: "Price must be a positive number" });
     }
+    
+    const imageUrl = req.file ? req.file.path : null;
+    
+    const parsedIsAvailable = parseBoolean(isAvailable);
+    
     const doc = new Menu({
       name: name.trim(),
       price: Number(price),
-      description: description?.trim(),
+      description: description?.trim() || undefined,
       stock: stock != null ? Number(stock) : undefined,
       date: date ? new Date(date) : undefined,
-      isAvailable: typeof isAvailable === "boolean" ? isAvailable : undefined,
+      image: imageUrl,
+      isAvailable: parsedIsAvailable !== undefined ? parsedIsAvailable : undefined,
     });
+    
+    console.log('💾 Document to save:', doc);
+    
     await doc.save();
-    res.status(201).json(doc);
+    
+    console.log('✅ Saved successfully:', doc._id);
+    
+    res.status(201).json({ message: "Menu berhasil dibuat", menu: doc });
   } catch (error) {
+    console.error('❌ Error:', error);
     res.status(400).json({ message: error.message });
   }
 });
@@ -202,14 +225,20 @@ router.put("/:id", authenticateToken, requireAdmin, async (req, res) => {
     if (!name || price == null) {
       return res.status(400).json({ message: "Name & price required" });
     }
+    
+    // ✅ PERBAIKAN: Handle both JSON & form-data
+    const parsedIsAvailable = parseBoolean(isAvailable);
+    
     const update = {
       name: name.trim(),
       price: Number(price),
       description: description?.trim() || undefined,
       stock: stock != null ? Number(stock) : 0,
+      image: req.body.image?.trim() || undefined,
       date: date ? new Date(date) : undefined,
-      isAvailable: typeof isAvailable === "boolean" ? isAvailable : true,
+      isAvailable: parsedIsAvailable !== undefined ? parsedIsAvailable : true,
     };
+    
     const doc = await Menu.findByIdAndUpdate(req.params.id, update, {
       new: true,
       runValidators: true,
@@ -229,18 +258,26 @@ router.patch("/:id", authenticateToken, requireAdmin, async (req, res) => {
       "price",
       "description",
       "stock",
+      "image",
       "date",
       "isAvailable",
     ];
     const updates = {};
     for (const k of Object.keys(req.body)) {
       if (allowed.includes(k)) {
-        if (k === "price" || k === "stock") updates[k] = Number(req.body[k]);
-        else if (k === "date") updates[k] = new Date(req.body[k]);
-        else updates[k] = req.body[k];
+        if (k === "price" || k === "stock") {
+          updates[k] = Number(req.body[k]);
+        } else if (k === "date") {
+          updates[k] = new Date(req.body[k]);
+        } else if (k === "isAvailable") {
+          updates[k] = parseBoolean(req.body[k]);
+        } else {
+          updates[k] = req.body[k];
+        }
       }
     }
     if (updates.name) updates.name = updates.name.trim();
+    
     const doc = await Menu.findByIdAndUpdate(
       req.params.id,
       { $set: updates },
