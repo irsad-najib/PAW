@@ -74,9 +74,22 @@ async function cleanupLegacyUserIndexes() {
 const app = express();
 connectDB();
 
+// CORS Configuration
+const corsOptions = {
+  origin: [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://paw-fe-irsad-najibs-projects.vercel.app",
+    process.env.FRONTEND_URL,
+  ].filter(Boolean),
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use(passport.initialize()); // (jika pakai express-session letakkan sebelum passport.initialize())
 
