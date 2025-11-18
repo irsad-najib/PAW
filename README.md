@@ -78,23 +78,9 @@ PAW/
 - Keamanan & Utilitas: bcryptjs, cors, cookie-parser, dotenv
 - Lainnya: axios, nodemon (dev)
 
-## 5. Environment Variables (Backend)
+## 5. Cara Menjalankan Proyek
 
-Buat file `.env` di folder `Backend/` dengan variabel berikut:
-
-```
-PORT=5000
-MongoURI=mongodb+srv://<user>:<password>@cluster/<dbName>
-JWT_SECRET=your_jwt_secret
-MIDTRANS_SERVER_KEY=your_midtrans_server_key
-MIDTRANS_CLIENT_KEY=your_midtrans_client_key
-googleClientID=your_google_oauth_client_id
-googleClientSecret=your_google_oauth_client_secret
-```
-
-## 6. Cara Menjalankan Proyek
-
-### 6.1 Backend
+### 5.1 Backend
 
 ```bash
 cd Backend
@@ -104,19 +90,19 @@ npm run dev   # jalankan dalam mode development (nodemon)
 npm start     # produksi
 ```
 
-Server berjalan di: `http://localhost:5000`
+Server berjalan di: `https://paw-be-weld.vercel.app/`
 
-## 7. Dokumentasi API (Swagger)
+## 6. Dokumentasi API (Swagger)
 
 Setelah backend berjalan, akses:
 
 ```
-http://localhost:5000/api-docs
+https://paw-be-weld.vercel.app//api-docs
 ```
 
 Swagger mencakup endpoint: autentikasi (register/login/Google OAuth), user profile, menu, order, payment, holiday, dan notifikasi.
 
-## 8. Endpoint Autentikasi (Contoh Ringkas)
+## 7. Endpoint Autentikasi (Contoh Ringkas)
 
 | Method | Endpoint                  | Deskripsi                        |
 | ------ | ------------------------- | -------------------------------- |
@@ -128,5 +114,10 @@ Swagger mencakup endpoint: autentikasi (register/login/Google OAuth), user profi
 
 Endpoint lain (menu, order, payment, holiday) dapat dilihat di Swagger UI.
 
-## 9. Link Laporan (Google Drive)
+## 8. Link Laporan (Google Drive)
+
 https://drive.google.com/drive/folders/1n6JWPrD3h9vLz-0bWRTrdK1rlMacNbwB?usp=sharing
+
+## 9. frontend link
+
+frontend berjalan di : `https://paw-08.netlify.app`
