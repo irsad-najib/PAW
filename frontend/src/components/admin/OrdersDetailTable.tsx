@@ -26,6 +26,7 @@ import { updateOrderStatus, markOrderPaid, markGroupPaid } from "@/lib/api";
 interface OrdersDetailTableProps {
   selectedDate: string;
   orders: Order[];
+  onDataChanged?: () => void;
 }
 
 type TableOrder = {
@@ -60,6 +61,7 @@ type ConfirmAction = {
 export default function OrdersDetailTable({
   selectedDate,
   orders,
+  onDataChanged,
 }: OrdersDetailTableProps) {
   const [filters, setFilters] = useState({
     search: "",
@@ -230,6 +232,7 @@ export default function OrdersDetailTable({
         await updateOrderStatus(order.id, nextStatus);
         handleAdvanceStatus(order.id, nextStatus);
       }
+      onDataChanged?.();
     } catch (err: any) {
       console.error("Gagal update pembayaran:", err.message);
       alert("Gagal update pembayaran: " + err.message);
@@ -566,6 +569,7 @@ export default function OrdersDetailTable({
                 confirmAction.order,
                 confirmAction.nextStatus
               );
+              onDataChanged?.();
             } catch (err: any) {
               console.error("Gagal update status:", err.message);
               alert("Gagal update status: " + err.message);

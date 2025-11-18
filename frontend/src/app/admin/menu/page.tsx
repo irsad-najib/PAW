@@ -25,7 +25,12 @@ const getWeekDates = (offset: number): Date[] => {
   return days;
 };
 
-const formatISO = (d: Date) => d.toISOString().split("T")[0];
+const formatISO = (d: Date) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`; // Gunakan tanggal lokal, hindari offset UTC
+};
 const formatDayID = (d: Date) => d.toLocaleDateString("id-ID", { weekday: "long" });
 const formatDateShort = (d: Date) => d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
 const formatDateWithYear = (d: Date) =>
@@ -37,6 +42,7 @@ export default function MenuPage() {
   const [weekMenus, setWeekMenus] = useState<Record<string, number>>({});
   const [weekLoading, setWeekLoading] = useState(false);
   const [weekError, setWeekError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const currentDate = useCurrentDate();
 
   const weekData = useMemo(() => {
@@ -95,7 +101,7 @@ export default function MenuPage() {
         setWeekError("Gagal memuat jumlah menu minggu ini.");
       })
       .finally(() => setWeekLoading(false));
-  }, [currentWeekOffset]);
+  }, [currentWeekOffset, refreshKey]);
 
   return (
     <div>
@@ -173,7 +179,11 @@ export default function MenuPage() {
         )}
       </div>
 
-      <MenuDetail selectedDate={selectedMenuDate} />
-    </div>
+        <MenuDetail
+          key={selectedMenuDate} // reset form when tanggal berganti
+          selectedDate={selectedMenuDate}
+          onDataChanged={() => setRefreshKey((v) => v + 1)}
+        />
+      </div>
   );
 }

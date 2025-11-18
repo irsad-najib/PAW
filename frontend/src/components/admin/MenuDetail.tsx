@@ -10,9 +10,10 @@ type MenuItem = Menu & { imageUrl?: string };
 
 interface MenuDetailProps {
   selectedDate: string;
+  onDataChanged?: () => void;
 }
 
-export default function MenuDetail({ selectedDate }: MenuDetailProps) {
+export default function MenuDetail({ selectedDate, onDataChanged }: MenuDetailProps) {
   const [menus, setMenus] = useState<MenuItem[]>([]);
   const [catalog, setCatalog] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -137,6 +138,7 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
         await createMenu(payload);
       }
       refreshMenus();
+      onDataChanged?.();
       setError(null);
     } catch (e: any) {
       console.warn("Simpan menu gagal:", e.message);
@@ -157,6 +159,7 @@ export default function MenuDetail({ selectedDate }: MenuDetailProps) {
         await deleteMenu(showDelete._id);
       }
       refreshMenus();
+      onDataChanged?.();
     } catch (e: any) {
       console.warn("Hapus menu gagal:", e.message);
       setError("Gagal menghapus menu, coba lagi.");

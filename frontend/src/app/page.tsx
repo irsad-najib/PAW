@@ -16,6 +16,13 @@ interface CartItem {
   orderDate: string; // YYYY-MM-DD
 }
 
+const formatLocalDate = (d: Date) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 export default function HomePage() {
   // 30 hari ke depan
   const dates = Array.from({ length: 30 }, (_, i) => {
@@ -32,9 +39,7 @@ export default function HomePage() {
   const [showCheckout, setShowCheckout] = useState(false);
   const swiperRef = useRef<any>(null);
 
-  const selectedDateKey = selected
-    ? selected.toISOString().split("T")[0]
-    : "";
+  const selectedDateKey = selected ? formatLocalDate(selected) : "";
 
   const onSelect = (date: Date) => {
     setSelected(date);
@@ -99,8 +104,8 @@ export default function HomePage() {
       try {
         const params: any = { page: 1, limit: 50 };
         if (selected) {
-          // backend accepts a date string; send ISO string to be safe
-          params.date = selected.toISOString();
+          // backend menerima string tanggal; pakai tanggal lokal agar tidak mundur karena offset UTC
+          params.date = formatLocalDate(selected);
         }
         const res = await api.get("/menu", { params });
         // backend responds { page, limit, total, items }

@@ -11,7 +11,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Order, getMenuName } from "@/lib/types";
 import { fetchAdminOrders, fetchOrderSummary } from "@/lib/api";
 
-const formatISO = (date: Date) => date.toISOString().split("T")[0];
+const formatISO = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`; // gunakan tanggal lokal, hindari offset UTC
+};
 
 export default function OrdersPage() {
   const { user, loading: authLoading } = useAuth();
@@ -27,6 +32,7 @@ export default function OrdersPage() {
     title: string;
     notes: string[];
   } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const currentDate = useCurrentDate();
 
   // Ringkasan produksi harian
@@ -77,7 +83,7 @@ export default function OrdersPage() {
         setSummaryData([]);
       })
       .finally(() => setSummaryLoading(false));
-  }, [selectedDate, authLoading, user]);
+  }, [selectedDate, authLoading, user, refreshKey]);
 
   // Data detail pesanan
   useEffect(() => {
@@ -100,7 +106,9 @@ export default function OrdersPage() {
     return () => {
       mounted = false;
     };
-  }, [selectedDate, authLoading, user]);
+  }, [selectedDate, authLoading, user, refreshKey]);
+
+  const triggerRefresh = () => setRefreshKey((v) => v + 1);
 
   const handleOpenNotes = (menuName: string, notes: string[]) => {
     setNotesModal({ title: menuName, notes });
@@ -140,7 +148,11 @@ export default function OrdersPage() {
         {loadingOrders ? (
           <p className="text-gray-500">Memuat data pesanan...</p>
         ) : (
-          <OrdersDetailTable selectedDate={selectedDate} orders={allOrders} />
+          <OrdersDetailTable
+            selectedDate={selectedDate}
+            orders={allOrders}
+            onDataChanged={triggerRefresh}
+          />
         )}
       </div>
 

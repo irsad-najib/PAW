@@ -22,6 +22,7 @@ import { updateOrderStatus, markOrderPaid, markGroupPaid } from "@/lib/api";
 
 interface VerificationTableProps {
   orders: Order[];
+  onDataChanged?: () => void;
 }
 
 type ConfirmAction = {
@@ -37,7 +38,10 @@ type PaymentAction = {
 
 type OrderDetailModal = Order | null;
 
-export default function VerificationTable({ orders }: VerificationTableProps) {
+export default function VerificationTable({
+  orders,
+  onDataChanged,
+}: VerificationTableProps) {
   const [orderState, setOrderState] = useState<Order[]>(orders);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Semua Status");
@@ -134,6 +138,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
         await updateOrderStatus(order._id, nextStatus);
         setOrderStatus(order._id, nextStatus);
       }
+      onDataChanged?.();
     } catch (err: any) {
       console.error("Gagal update pembayaran:", err.message);
       alert("Gagal update pembayaran: " + err.message);
@@ -336,6 +341,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
                 confirmAction.nextStatus
               );
               setOrderStatus(confirmAction.order._id, confirmAction.nextStatus);
+              onDataChanged?.();
             } catch (err: any) {
               console.error("Gagal update status:", err.message);
               alert("Gagal update status: " + err.message);

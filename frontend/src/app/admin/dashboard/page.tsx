@@ -19,7 +19,6 @@ export default function DashboardPage() {
   const currentDate = useCurrentDate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [stat, setStat] = useState({
     totalOrdersToday: 0,
     totalRevenue: 0,
@@ -43,6 +42,13 @@ export default function DashboardPage() {
     title: string;
     notes: string[];
   } | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const formatLocalDate = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -51,7 +57,7 @@ export default function DashboardPage() {
         isMounted = false;
       };
     setLoadingOrders(true);
-    const todayISO = new Date().toISOString().split("T")[0];
+    const todayISO = formatLocalDate(new Date());
     // Fetch all recent orders and filter by orderDates client-side
     fetchAdminOrders({ limit: 200 })
       .then((res) => {
@@ -78,14 +84,12 @@ export default function DashboardPage() {
     return () => {
       isMounted = false;
     };
-  }, [authLoading, user]);
+  }, [authLoading, user, refreshTrigger]);
 
   useEffect(() => {
     if (authLoading || !user) return;
-    const todayISO = new Date().toISOString().split("T")[0];
-    const tomorrowISO = new Date(Date.now() + 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split("T")[0];
+    const todayISO = formatLocalDate(new Date());
+    const tomorrowISO = formatLocalDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
 
     fetchOrderSummary(todayISO)
       .then((res) => {
@@ -329,7 +333,10 @@ export default function DashboardPage() {
           {loadingOrders ? (
             <p className="text-gray-500">Memuat pesanan...</p>
           ) : (
-            <VerificationTable orders={orders} />
+            <VerificationTable
+              orders={orders}
+              onDataChanged={() => setRefreshTrigger((prev) => prev + 1)}
+            />
           )}
         </div>
       </div>
