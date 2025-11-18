@@ -23,6 +23,11 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    phone: {
+      type: String,
+      sparse: true,
+      trim: true,
+    },
     password: { type: String },
     role: { type: String, enum: ["user", "admin"], default: "user" },
     googleId: { type: String, unique: true, sparse: true },

@@ -2,7 +2,43 @@ const express = require("express");
 const router = express.Router();
 const Order = require("../models/order.model");
 const Menu = require("../models/menu.model");
+const User = require("../models/user.model");
 const authenticateToken = require("../middleware/JWT");
+const axios = require("axios");
+
+const FONNTE_API_URL = "https://api.fonnte.com/send";
+const FONNTE_TOKEN = process.env.FONNTE_TOKEN;
+
+// Helper function untuk kirim notifikasi WhatsApp
+async function sendWhatsAppNotification(phone, message) {
+  try {
+    if (!FONNTE_TOKEN) {
+      console.warn(
+        "FONNTE_TOKEN not configured, skipping WhatsApp notification"
+      );
+      return null;
+    }
+    const response = await axios.post(
+      FONNTE_API_URL,
+      {
+        target: phone,
+        message: message,
+      },
+      {
+        headers: {
+          Authorization: FONNTE_TOKEN,
+        },
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Failed to send WhatsApp notification:",
+      error.response?.data || error.message
+    );
+    return null;
+  }
+}
 
 function requireAdmin(req, res, next) {
   if (!req.auth || req.auth.role !== "admin") {
@@ -17,10 +53,6 @@ function requireAdmin(req, res, next) {
  *   name: Orders
  *   description: Manajemen pesanan
  */
-
-// @ route   POST /api/orders
-// @ desc    Membuat pesanan baru
-// @ access  Public (untuk testing sementara)
 
 /**
  * @swagger
@@ -162,6 +194,9 @@ function requireAdmin(req, res, next) {
  *                   $ref: '#/components/schemas/Order'
  */
 
+// ============================================================
+// ROUTE 1: GET / - List orders user (paginated)
+// ============================================================
 /**
  * @swagger
  * /api/orders:
@@ -221,20 +256,462 @@ router.get("/", authenticateToken, async (req, res) => {
   }
 });
 
-// Detail order (owner atau admin)
-router.get("/:id", authenticateToken, async (req, res) => {
+// ============================================================
+// ROUTE 2: GET /admin/summary - Admin order summary by date
+// ============================================================
+/**
+ * @swagger
+ * /api/orders/admin/summary:
+ *   get:
+ *     summary: Dapatkan ringkasan pesanan untuk admin berdasarkan tanggal
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         required: false
+ *         description: Tanggal untuk filter (YYYY-MM-DD), default hari ini
+ *     responses:
+ *       200:
+ *         description: Summary pesanan
+ */
+router.get("/admin/summary", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const doc = await Order.findById(req.params.id).populate("items.menuId");
-    if (!doc) return res.status(404).json({ message: "Order not found" });
-    if (String(doc.userId) !== req.auth.userId && req.auth.role !== "admin") {
-      return res.status(403).json({ message: "Forbidden" });
-    }
-    res.json(doc);
+    const { date } = req.query;
+    const targetDate = date ? new Date(date) : new Date();
+    
+    // Set ke awal hari (00:00:00)
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    // Set ke akhir hari (23:59:59)
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const orders = await Order.find({
+      orderDates: {
+        $elemMatch: {
+          $gte: startOfDay,
+          $lte: endOfDay
+        }
+      }
+    }).populate("items.menuId userId");
+
+    const summary = {
+      totalOrders: orders.length,
+      totalRevenue: orders.reduce((sum, o) => sum + o.totalPrice, 0),
+      byStatus: {},
+      byPaymentStatus: {},
+      byDeliveryTime: {},
+    };
+
+    orders.forEach(order => {
+      summary.byStatus[order.orderStatus] = (summary.byStatus[order.orderStatus] || 0) + 1;
+      summary.byPaymentStatus[order.paymentStatus] = (summary.byPaymentStatus[order.paymentStatus] || 0) + 1;
+      summary.byDeliveryTime[order.deliveryTime] = (summary.byDeliveryTime[order.deliveryTime] || 0) + 1;
+    });
+
+    res.json({ date: targetDate.toISOString(), summary, orders });
   } catch (e) {
+    console.error("Error fetching order summary:", e);
     res.status(500).json({ message: e.message });
   }
 });
 
+// ============================================================
+// ROUTE 3: GET /admin - Admin list all orders (paginated)
+// ============================================================
+/**
+ * @swagger
+ * /api/orders/admin:
+ *   get:
+ *     summary: Dapatkan semua pesanan untuk admin (paginated)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List semua pesanan
+ */
+router.get("/admin", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 100);
+    const skip = (page - 1) * limit;
+
+    const [items, total] = await Promise.all([
+      Order.find()
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("items.menuId userId"),
+      Order.countDocuments(),
+    ]);
+
+    res.json({ page, limit, total, items });
+  } catch (error) {
+    console.error("Error fetching admin orders:", error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ============================================================
+// ROUTE 4: GET /group/:groupId - Get orders by groupId
+// ============================================================
+/**
+ * @swagger
+ * /api/orders/group/{groupId}:
+ *   get:
+ *     summary: Ambil semua orders dalam satu groupId (multi-day split)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Daftar orders dalam group
+ *       403:
+ *         description: Forbidden jika bukan pemilik atau admin
+ *       404:
+ *         description: Group tidak ditemukan
+ */
+router.get("/group/:groupId", authenticateToken, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const orders = await Order.find({ groupId })
+      .sort({ createdAt: 1 })
+      .populate("items.menuId");
+    if (!orders.length)
+      return res.status(404).json({ message: "Group not found" });
+    
+    const allOwned = orders.every((o) => String(o.userId) === req.auth.userId);
+    if (!allOwned && req.auth.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    
+    const paymentStatuses = [...new Set(orders.map((o) => o.paymentStatus))];
+    const paymentMethod = orders[0].paymentMethod;
+    const totals = orders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+    return res.json({
+      groupId,
+      count: orders.length,
+      paymentMethod,
+      paymentStatuses,
+      totalAmount: totals,
+      orders,
+    });
+  } catch (e) {
+    console.error("Error fetching group orders:", e);
+    return res.status(500).json({ message: e.message });
+  }
+});
+
+// ============================================================
+// ROUTE 5: PATCH /group/:groupId/payment - Mark group paid
+// ============================================================
+/**
+ * @swagger
+ * /api/orders/group/{groupId}/payment:
+ *   patch:
+ *     summary: Set all orders in a transfer multi-day group to paid (admin only)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: groupId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [markPaid]
+ *                 example: markPaid
+ *     responses:
+ *       200:
+ *         description: Orders updated to paid
+ *       400:
+ *         description: Invalid group or state
+ *       403:
+ *         description: Forbidden
+ */
+router.patch("/group/:groupId/payment", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { action } = req.body || {};
+    if (action !== "markPaid") {
+      return res.status(400).json({ message: "Invalid action" });
+    }
+    const orders = await Order.find({ groupId });
+    if (!orders.length) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+    
+    const methodSet = new Set(orders.map((o) => o.paymentMethod));
+    if (methodSet.size !== 1) {
+      return res
+        .status(400)
+        .json({ message: "Mixed paymentMethod in group not allowed" });
+    }
+    const method = [...methodSet][0];
+
+    const unpaid = orders.filter((o) => o.paymentStatus !== "paid");
+    if (!unpaid.length) {
+      return res.json({
+        message: "Group already fully paid",
+        groupId,
+        orders,
+      });
+    }
+
+    const allowedFrom = method === "cash" ? ["unpaid"] : ["pending"];
+    const invalidState = unpaid.find(
+      (o) => !allowedFrom.includes(o.paymentStatus)
+    );
+    if (invalidState) {
+      return res.status(400).json({
+        message: `Cannot mark group paid: found order with paymentStatus=${invalidState.paymentStatus} (method=${method})`,
+      });
+    }
+
+    await Order.updateMany(
+      { groupId, paymentStatus: { $in: allowedFrom } },
+      { $set: { paymentStatus: "paid" } }
+    );
+    const refreshed = await Order.find({ groupId }).sort({ createdAt: 1 });
+    return res.json({
+      message: `Group payment set to paid (${method})`,
+      groupId,
+      orders: refreshed,
+    });
+  } catch (e) {
+    console.error("Error marking group paid:", e);
+    return res.status(500).json({ message: e.message });
+  }
+});
+
+// ============================================================
+// ROUTE 6: PATCH /:id/status - Update order status
+// ============================================================
+/**
+ * @swagger
+ * /api/orders/{id}/status:
+ *   patch:
+ *     summary: Update order status (admin only)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               orderStatus:
+ *                 type: string
+ *                 enum: [processing, completed, cancelled]
+ *     responses:
+ *       200:
+ *         description: Status updated
+ */
+router.patch("/:id/status", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { orderStatus } = req.body;
+    if (!["processing", "completed", "cancelled"].includes(orderStatus)) {
+      return res.status(400).json({ message: "Invalid orderStatus" });
+    }
+    const doc = await Order.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: "Order not found" });
+    if (doc.orderStatus === "cancelled") {
+      return res.status(400).json({ message: "Already cancelled" });
+    }
+
+    const previousStatus = doc.orderStatus;
+
+    if (orderStatus === "cancelled" && !doc.stockRestored) {
+      for (const it of doc.items) {
+        const menu = await Menu.findById(it.menuId);
+        if (menu && menu.stock != null) {
+          menu.stock += it.quantity;
+          await menu.save();
+        }
+      }
+      doc.stockRestored = true;
+    }
+    doc.orderStatus = orderStatus;
+    await doc.save();
+
+    if (orderStatus === "completed" && previousStatus !== "completed") {
+      try {
+        const user = await User.findById(doc.userId);
+        if (user && user.phone) {
+          const message = `Halo ${
+            user.name || user.username
+          }! ✅\n\nPesanan Anda sudah READY! 🎉\n\nOrder ID: ${doc._id
+            .toString()
+            .slice(-8)
+            .toUpperCase()}\nTanggal: ${new Date(
+            doc.orderDates[0]
+          ).toLocaleDateString("id-ID")}\nWaktu: ${
+            doc.deliveryTime
+          }\n\nPesanan Anda sudah siap untuk ${
+            doc.deliveryType === "Delivery" ? "diantar" : "diambil"
+          }.\n\nTerima kasih! 🍱`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (notifError) {
+        console.error("Failed to send completion notification:", notifError);
+      }
+    }
+
+    res.json({ message: "Status updated", order: doc });
+  } catch (e) {
+    console.error("Error updating order status:", e);
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ============================================================
+// ROUTE 7: POST /:id/cancel - Cancel order
+// ============================================================
+/**
+ * @swagger
+ * /api/orders/{id}/cancel:
+ *   post:
+ *     summary: Cancel order (admin only)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Order cancelled
+ */
+router.post("/:id/cancel", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const doc = await Order.findById(req.params.id);
+    if (!doc) return res.status(404).json({ message: "Order not found" });
+    if (doc.orderStatus === "cancelled")
+      return res.status(400).json({ message: "Already cancelled" });
+    if (!doc.stockRestored) {
+      for (const it of doc.items) {
+        const menu = await Menu.findById(it.menuId);
+        if (menu && menu.stock != null) {
+          menu.stock += it.quantity;
+          await menu.save();
+        }
+      }
+      doc.stockRestored = true;
+    }
+    doc.orderStatus = "cancelled";
+    await doc.save();
+    res.json({ message: "Order cancelled", order: doc });
+  } catch (e) {
+    console.error("Error cancelling order:", e);
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ============================================================
+// ROUTE 8: PATCH /:id/payment - Mark single order paid
+// ============================================================
+/**
+ * @swagger
+ * /api/orders/{id}/payment:
+ *   patch:
+ *     summary: Set single order payment to paid (admin, cash only / manual adjust)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [markPaid]
+ *                 example: markPaid
+ *     responses:
+ *       200:
+ *         description: Order payment set to paid
+ *       400:
+ *         description: Invalid state
+ *       403:
+ *         description: Forbidden
+ */
+router.patch("/:id/payment", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action } = req.body || {};
+    if (action !== "markPaid") {
+      return res.status(400).json({ message: "Invalid action" });
+    }
+    const order = await Order.findById(id);
+    if (!order) return res.status(404).json({ message: "Order not found" });
+    if (order.paymentStatus === "paid") {
+      return res.status(400).json({ message: "Already paid" });
+    }
+    if (!["cash", "transfer"].includes(order.paymentMethod)) {
+      return res.status(400).json({ message: "Unsupported paymentMethod" });
+    }
+    order.paymentStatus = "paid";
+    await order.save();
+    return res.json({ message: "Payment set to paid", order });
+  } catch (e) {
+    console.error("Error marking order paid:", e);
+    return res.status(500).json({ message: e.message });
+  }
+});
+
+// ============================================================
+// ROUTE 9: POST / - Create new order
+// ============================================================
 /**
  * @swagger
  * /api/orders:
@@ -252,17 +729,10 @@ router.get("/:id", authenticateToken, async (req, res) => {
  *     responses:
  *       201:
  *         description: Created order(s)
- *         content:
- *           application/json:
- *             oneOf:
- *               - $ref: '#/components/responses/CreateOrderSingle/content/application~1json/schema'
- *               - $ref: '#/components/responses/CreateOrderMulti/content/application~1json/schema'
- *               - $ref: '#/components/responses/CreateOrderMultiTransfer/content/application~1json/schema'
  *       400:
  *         description: Data tidak valid
  */
 router.post("/", authenticateToken, async (req, res) => {
-  // Refactor: multi-day -> split menjadi beberapa order (satu per tanggal)
   try {
     const {
       items,
@@ -310,8 +780,7 @@ router.post("/", authenticateToken, async (req, res) => {
 
     const menuMap = new Map(menus.map((m) => [String(m._id), m]));
 
-    // Group items by menu.date
-    const groups = new Map(); // dateISO -> { items: [], date: Date }
+    const groups = new Map();
     for (const it of items) {
       if (!it.menuId || !it.quantity || it.quantity <= 0) {
         return res.status(400).json({ message: "Invalid item entry" });
@@ -343,11 +812,10 @@ router.post("/", authenticateToken, async (req, res) => {
         menuId: menu._id,
         quantity: it.quantity,
         specialNotes: it.specialNotes || "",
-        _price: menu.price, // attach for later total calc
+        _price: menu.price,
       });
     }
 
-    // STOCK CHECK PASS -> decrement stocks
     for (const it of items) {
       const m = menuMap.get(String(it.menuId));
       if (m.stock != null) {
@@ -357,14 +825,12 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     const multiDay = groups.size > 1;
-    // Generate groupId for ANY multi-day order (cash or transfer) so admin dapat set paid per group
     let groupId = null;
     if (multiDay) {
       groupId = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
     }
 
     const createdOrders = [];
-    // Sort dates ASC
     const sortedGroups = Array.from(groups.values()).sort(
       (a, b) => a.date - b.date
     );
@@ -396,6 +862,30 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     if (groupId) {
+      try {
+        const user = await User.findById(userId);
+        if (user && user.phone) {
+          const totalAmount = createdOrders.reduce(
+            (sum, o) => sum + o.totalPrice,
+            0
+          );
+          const message = `Halo ${
+            user.name || user.username
+          }! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Jumlah pesanan: ${
+            createdOrders.length
+          } hari\n- Total: Rp ${totalAmount.toLocaleString(
+            "id-ID"
+          )}\n- Metode: ${
+            paymentMethod === "cash" ? "Tunai" : "Transfer"
+          }\n- Status: ${
+            paymentMethod === "cash" ? "Belum Bayar" : "Menunggu Pembayaran"
+          }\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (notifError) {
+        console.error("Failed to send order notification:", notifError);
+      }
+
       return res.status(201).json({
         message: `Multi-day orders created (${paymentMethod} group ${
           paymentMethod === "cash" ? "unpaid" : "pending"
@@ -406,10 +896,54 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     if (multiDay) {
+      try {
+        const user = await User.findById(userId);
+        if (user && user.phone) {
+          const totalAmount = createdOrders.reduce(
+            (sum, o) => sum + o.totalPrice,
+            0
+          );
+          const message = `Halo ${
+            user.name || user.username
+          }! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Jumlah pesanan: ${
+            createdOrders.length
+          } hari\n- Total: Rp ${totalAmount.toLocaleString(
+            "id-ID"
+          )}\n- Metode: ${
+            paymentMethod === "cash" ? "Tunai" : "Transfer"
+          }\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (notifError) {
+        console.error("Failed to send order notification:", notifError);
+      }
+
       return res
         .status(201)
         .json({ message: "Multi-day orders created", orders: createdOrders });
     } else {
+      try {
+        const user = await User.findById(userId);
+        if (user && user.phone) {
+          const order = createdOrders[0];
+          const message = `Halo ${
+            user.name || user.username
+          }! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Order ID: ${order._id
+            .toString()
+            .slice(-8)
+            .toUpperCase()}\n- Total: Rp ${order.totalPrice.toLocaleString(
+            "id-ID"
+          )}\n- Tanggal: ${new Date(order.orderDates[0]).toLocaleDateString(
+            "id-ID"
+          )}\n- Waktu: ${order.deliveryTime}\n- Metode: ${
+            paymentMethod === "cash" ? "Tunai" : "Transfer"
+          }\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (notifError) {
+        console.error("Failed to send order notification:", notifError);
+      }
+
       return res
         .status(201)
         .json({ message: "Order created", order: createdOrders[0] });
@@ -420,176 +954,14 @@ router.post("/", authenticateToken, async (req, res) => {
   }
 });
 
-// Admin update status (processing, completed, cancelled)
-router.patch(
-  "/:id/status",
-  authenticateToken,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      const { orderStatus } = req.body;
-      if (!["processing", "completed", "cancelled"].includes(orderStatus)) {
-        return res.status(400).json({ message: "Invalid orderStatus" });
-      }
-      const doc = await Order.findById(req.params.id);
-      if (!doc) return res.status(404).json({ message: "Order not found" });
-      if (doc.orderStatus === "cancelled") {
-        return res.status(400).json({ message: "Already cancelled" });
-      }
-      // Jika cancel & belum restore stok
-      if (orderStatus === "cancelled" && !doc.stockRestored) {
-        for (const it of doc.items) {
-          const menu = await Menu.findById(it.menuId);
-          if (menu && menu.stock != null) {
-            menu.stock += it.quantity; // restore
-            await menu.save();
-          }
-        }
-        doc.stockRestored = true;
-      }
-      doc.orderStatus = orderStatus;
-      await doc.save();
-      res.json({ message: "Status updated", order: doc });
-    } catch (e) {
-      res.status(500).json({ message: e.message });
-    }
-  }
-);
-
-// Admin cancel explicit endpoint (alias status=cancelled)
-router.post(
-  "/:id/cancel",
-  authenticateToken,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      const doc = await Order.findById(req.params.id);
-      if (!doc) return res.status(404).json({ message: "Order not found" });
-      if (doc.orderStatus === "cancelled")
-        return res.status(400).json({ message: "Already cancelled" });
-      if (!doc.stockRestored) {
-        for (const it of doc.items) {
-          const menu = await Menu.findById(it.menuId);
-          if (menu && menu.stock != null) {
-            menu.stock += it.quantity;
-            await menu.save();
-          }
-        }
-        doc.stockRestored = true;
-      }
-      doc.orderStatus = "cancelled";
-      await doc.save();
-      res.json({ message: "Order cancelled", order: doc });
-    } catch (e) {
-      res.status(500).json({ message: e.message });
-    }
-  }
-);
-
-module.exports = router;
-
+// ============================================================
+// ROUTE 10: GET /:id - Get order detail (PALING AKHIR!)
+// ============================================================
 /**
  * @swagger
- * /api/orders/group/{groupId}/payment:
- *   patch:
- *     summary: Set all orders in a transfer multi-day group to paid (admin only)
- *     tags: [Orders]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: groupId
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               action:
- *                 type: string
- *                 enum: [markPaid]
- *                 example: markPaid
- *     responses:
- *       200:
- *         description: Orders updated to paid
- *       400:
- *         description: Invalid group or state
- *       403:
- *         description: Forbidden
- */
-router.patch(
-  "/group/:groupId/payment",
-  authenticateToken,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      const { groupId } = req.params;
-      const { action } = req.body || {};
-      if (action !== "markPaid") {
-        return res.status(400).json({ message: "Invalid action" });
-      }
-      const orders = await Order.find({ groupId });
-      if (!orders.length) {
-        return res.status(404).json({ message: "Group not found" });
-      }
-      // Validasi konsistensi paymentMethod (tidak boleh campuran cash & transfer)
-      const methodSet = new Set(orders.map((o) => o.paymentMethod));
-      if (methodSet.size !== 1) {
-        return res
-          .status(400)
-          .json({ message: "Mixed paymentMethod in group not allowed" });
-      }
-      const method = [...methodSet][0]; // 'cash' atau 'transfer'
-
-      // Cek apakah sudah paid semua (idempotent safety)
-      const unpaid = orders.filter((o) => o.paymentStatus !== "paid");
-      if (!unpaid.length) {
-        return res.json({
-          message: "Group already fully paid",
-          groupId,
-          orders,
-        });
-      }
-
-      // Transisi diperbolehkan:
-      // - cash: unpaid -> paid (konfirmasi manual admin)
-      // - transfer: pending -> paid (konfirmasi manual / verifikasi)
-      // Order dalam status lain (completed/cancelled) dibiarkan saja (hanya ubah paymentStatus jika belum paid)
-      const allowedFrom = method === "cash" ? ["unpaid"] : ["pending"];
-      const invalidState = unpaid.find(
-        (o) => !allowedFrom.includes(o.paymentStatus)
-      );
-      if (invalidState) {
-        return res.status(400).json({
-          message: `Cannot mark group paid: found order with paymentStatus=${invalidState.paymentStatus} (method=${method})`,
-        });
-      }
-
-      await Order.updateMany(
-        { groupId, paymentStatus: { $in: allowedFrom } },
-        { $set: { paymentStatus: "paid" } }
-      );
-      const refreshed = await Order.find({ groupId }).sort({ createdAt: 1 });
-      return res.json({
-        message: `Group payment set to paid (${method})`,
-        groupId,
-        orders: refreshed,
-      });
-    } catch (e) {
-      return res.status(500).json({ message: e.message });
-    }
-  }
-);
-
-/**
- * @swagger
- * /api/orders/{id}/payment:
- *   patch:
- *     summary: Set single order payment to paid (admin, cash only / manual adjust)
+ * /api/orders/{id}:
+ *   get:
+ *     summary: Dapatkan detail order berdasarkan ID
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
@@ -599,102 +971,26 @@ router.patch(
  *         required: true
  *         schema:
  *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               action:
- *                 type: string
- *                 enum: [markPaid]
- *                 example: markPaid
  *     responses:
  *       200:
- *         description: Order payment set to paid
- *       400:
- *         description: Invalid state
+ *         description: Detail order
  *       403:
  *         description: Forbidden
- */
-router.patch(
-  "/:id/payment",
-  authenticateToken,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { action } = req.body || {};
-      if (action !== "markPaid") {
-        return res.status(400).json({ message: "Invalid action" });
-      }
-      const order = await Order.findById(id);
-      if (!order) return res.status(404).json({ message: "Order not found" });
-      if (order.paymentStatus === "paid") {
-        return res.status(400).json({ message: "Already paid" });
-      }
-      // Biz rule: hanya cash unpaid -> paid atau transfer pending -> paid (manual override)
-      if (!["cash", "transfer"].includes(order.paymentMethod)) {
-        return res.status(400).json({ message: "Unsupported paymentMethod" });
-      }
-      order.paymentStatus = "paid";
-      await order.save();
-      return res.json({ message: "Payment set to paid", order });
-    } catch (e) {
-      return res.status(500).json({ message: e.message });
-    }
-  }
-);
-
-/**
- * @swagger
- * /api/orders/group/{groupId}:
- *   get:
- *     summary: Ambil semua orders dalam satu groupId (multi-day split)
- *     tags: [Orders]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: groupId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Daftar orders dalam group
- *       403:
- *         description: Forbidden jika bukan pemilik atau admin
  *       404:
- *         description: Group tidak ditemukan
+ *         description: Order not found
  */
-router.get("/group/:groupId", authenticateToken, async (req, res) => {
+router.get("/:id", authenticateToken, async (req, res) => {
   try {
-    const { groupId } = req.params;
-    const orders = await Order.find({ groupId })
-      .sort({ createdAt: 1 })
-      .populate("items.menuId");
-    if (!orders.length)
-      return res.status(404).json({ message: "Group not found" });
-    // Authorization: semua orders harus milik user ini atau user adalah admin
-    const allOwned = orders.every((o) => String(o.userId) === req.auth.userId);
-    if (!allOwned && req.auth.role !== "admin") {
+    const doc = await Order.findById(req.params.id).populate("items.menuId");
+    if (!doc) return res.status(404).json({ message: "Order not found" });
+    if (String(doc.userId) !== req.auth.userId && req.auth.role !== "admin") {
       return res.status(403).json({ message: "Forbidden" });
     }
-    // Summary info
-    const paymentStatuses = [...new Set(orders.map((o) => o.paymentStatus))];
-    const paymentMethod = orders[0].paymentMethod;
-    const totals = orders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-    return res.json({
-      groupId,
-      count: orders.length,
-      paymentMethod,
-      paymentStatuses,
-      totalAmount: totals,
-      orders,
-    });
+    res.json(doc);
   } catch (e) {
-    return res.status(500).json({ message: e.message });
+    console.error("Error fetching order detail:", e);
+    res.status(500).json({ message: e.message });
   }
 });
+
+module.exports = router;
