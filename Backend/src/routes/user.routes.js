@@ -347,7 +347,21 @@ router.get(
   (req, res) => {
     const token = generateToken(req.user);
     // Redirect to frontend with token
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    // Automatically detect frontend URL based on environment
+    let frontendUrl = process.env.FRONTEND_URL;
+
+    // If not set, determine based on current host
+    if (!frontendUrl) {
+      const host = req.get("host");
+      if (host && host.includes("vercel.app")) {
+        // Production Vercel
+        frontendUrl = "https://paw-fe-irsad-najibs-projects.vercel.app";
+      } else {
+        // Local development
+        frontendUrl = "http://localhost:3000";
+      }
+    }
+
     res.redirect(`${frontendUrl}/auth/google/callback?token=${token}`);
   }
 );
