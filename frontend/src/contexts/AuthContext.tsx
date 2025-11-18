@@ -84,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const loginWithGoogle = () => {
     // Redirect to backend Google OAuth endpoint
-    window.location.href = `${"https://paw-be-werld.vercel.app/api/"}/auth/google`;
+    window.location.href = `https://paw-be-weld.vercel.app/api//auth/google`;
   };
 
   const register = async (
