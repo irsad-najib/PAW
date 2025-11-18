@@ -7,7 +7,14 @@ passport.use(
     {
       clientID: process.env.googleClientID,
       clientSecret: process.env.googleClientSecret,
-      callbackURL: "/api/auth/google/callback",
+      // ✅ Gunakan full URL dengan dynamic environment detection
+      callbackURL:
+        process.env.GOOGLE_CALLBACK_URL ||
+        (process.env.NODE_ENV === "production"
+          ? "https://paw-be-weld.vercel.app/api/auth/google/callback"
+          : "http://localhost:5000/api/auth/google/callback"),
+      // ✅ Trust proxy untuk Vercel
+      proxy: true,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
