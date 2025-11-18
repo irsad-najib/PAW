@@ -121,3 +121,7 @@ https://drive.google.com/drive/folders/1n6JWPrD3h9vLz-0bWRTrdK1rlMacNbwB?usp=sha
 ## 9. frontend link
 
 frontend berjalan di : `https://paw-08.netlify.app`
+
+## 10. Link Demo Video
+
+https://drive.google.com/drive/folders/1feAAsqYE2dO20pt5pyKBuUG5HYFaKbbx
