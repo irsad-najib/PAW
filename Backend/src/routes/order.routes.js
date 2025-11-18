@@ -688,6 +688,94 @@ router.patch("/:id/payment", authenticateToken, requireAdmin, async (req, res) =
   }
 });
 
+router.patch("/batch/status", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { orderIds, orderStatus } = req.body;
+
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return res.status(400).json({ message: "orderIds array required and cannot be empty" });
+    }
+
+    if (!["processing", "ready", "completed", "cancelled"].includes(orderStatus)) {
+      return res.status(400).json({ message: "Invalid orderStatus. Must be: processing, ready, completed, or cancelled" });
+    }
+
+    if (orderIds.length > 100) {
+      return res.status(400).json({ message: "Maximum 100 orders per batch update" });
+    }
+
+    const orders = await Order.find({ _id: { $in: orderIds } });
+
+    if (orders.length === 0) {
+      return res.status(404).json({ message: "No orders found with provided IDs" });
+    }
+
+    const cancelledOrders = orders.filter(o => o.orderStatus === "cancelled");
+    if (cancelledOrders.length > 0 && orderStatus !== "cancelled") {
+      return res.status(400).json({ 
+        message: "Cannot update cancelled orders", 
+        cancelledIds: cancelledOrders.map(o => o._id)
+      });
+    }
+
+    if (orderStatus === "cancelled") {
+      for (const order of orders) {
+        if (!order.stockRestored && order.orderStatus !== "cancelled") {
+          for (const item of order.items) {
+            const menu = await Menu.findById(item.menuId);
+            if (menu && menu.stock != null) {
+              menu.stock += item.quantity;
+              await menu.save();
+            }
+          }
+          order.stockRestored = true;
+        }
+      }
+    }
+
+    const updateResult = await Order.updateMany(
+      { 
+        _id: { $in: orderIds },
+        orderStatus: { $ne: "cancelled" }
+      },
+      { 
+        $set: { 
+          orderStatus: orderStatus,
+          ...(orderStatus === "cancelled" ? { stockRestored: true } : {})
+        } 
+      }
+    );
+
+    const updatedOrders = await Order.find({ _id: { $in: orderIds } })
+      .populate("items.menuId userId");
+
+    if (orderStatus === "completed") {
+      for (const order of updatedOrders) {
+        try {
+          const user = await User.findById(order.userId);
+          if (user && user.phone) {
+            const message = `Halo ${user.name || user.username}! ✅\n\nPesanan Anda sudah READY! 🎉\n\nOrder ID: ${order._id.toString().slice(-8).toUpperCase()}\nTanggal: ${new Date(order.orderDates[0]).toLocaleDateString("id-ID")}\nWaktu: ${order.deliveryTime}\n\nPesanan Anda sudah siap untuk ${order.deliveryType === "Delivery" ? "diantar" : "diambil"}.\n\nTerima kasih! 🍱`;
+            await sendWhatsAppNotification(user.phone, message);
+          }
+        } catch (notifError) {
+          console.error(`Failed to send notification for order ${order._id}:`, notifError);
+        }
+      }
+    }
+
+    return res.json({
+      message: `Successfully updated ${updateResult.modifiedCount} order(s) to ${orderStatus}`,
+      updated: updateResult.modifiedCount,
+      total: orderIds.length,
+      orders: updatedOrders
+    });
+
+  } catch (error) {
+    console.error("Error in batch update order status:", error);
+    return res.status(500).json({ message: error.message });
+  }
+});
+
 /**
  * @swagger
  * /api/orders:
@@ -963,94 +1051,6 @@ router.get("/:id", authenticateToken, async (req, res) => {
   } catch (e) {
     console.error("Error fetching order detail:", e);
     res.status(500).json({ message: e.message });
-  }
-});
-
-router.patch("/batch/status", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { orderIds, orderStatus } = req.body;
-
-    if (!Array.isArray(orderIds) || orderIds.length === 0) {
-      return res.status(400).json({ message: "orderIds array required and cannot be empty" });
-    }
-
-    if (!["processing", "ready", "completed", "cancelled"].includes(orderStatus)) {
-      return res.status(400).json({ message: "Invalid orderStatus. Must be: processing, ready, completed, or cancelled" });
-    }
-
-    if (orderIds.length > 100) {
-      return res.status(400).json({ message: "Maximum 100 orders per batch update" });
-    }
-
-    const orders = await Order.find({ _id: { $in: orderIds } });
-
-    if (orders.length === 0) {
-      return res.status(404).json({ message: "No orders found with provided IDs" });
-    }
-
-    const cancelledOrders = orders.filter(o => o.orderStatus === "cancelled");
-    if (cancelledOrders.length > 0 && orderStatus !== "cancelled") {
-      return res.status(400).json({ 
-        message: "Cannot update cancelled orders", 
-        cancelledIds: cancelledOrders.map(o => o._id)
-      });
-    }
-
-    if (orderStatus === "cancelled") {
-      for (const order of orders) {
-        if (!order.stockRestored && order.orderStatus !== "cancelled") {
-          for (const item of order.items) {
-            const menu = await Menu.findById(item.menuId);
-            if (menu && menu.stock != null) {
-              menu.stock += item.quantity;
-              await menu.save();
-            }
-          }
-          order.stockRestored = true;
-        }
-      }
-    }
-
-    const updateResult = await Order.updateMany(
-      { 
-        _id: { $in: orderIds },
-        orderStatus: { $ne: "cancelled" }
-      },
-      { 
-        $set: { 
-          orderStatus: orderStatus,
-          ...(orderStatus === "cancelled" ? { stockRestored: true } : {})
-        } 
-      }
-    );
-
-    const updatedOrders = await Order.find({ _id: { $in: orderIds } })
-      .populate("items.menuId userId");
-
-    if (orderStatus === "completed") {
-      for (const order of updatedOrders) {
-        try {
-          const user = await User.findById(order.userId);
-          if (user && user.phone) {
-            const message = `Halo ${user.name || user.username}! ✅\n\nPesanan Anda sudah READY! 🎉\n\nOrder ID: ${order._id.toString().slice(-8).toUpperCase()}\nTanggal: ${new Date(order.orderDates[0]).toLocaleDateString("id-ID")}\nWaktu: ${order.deliveryTime}\n\nPesanan Anda sudah siap untuk ${order.deliveryType === "Delivery" ? "diantar" : "diambil"}.\n\nTerima kasih! 🍱`;
-            await sendWhatsAppNotification(user.phone, message);
-          }
-        } catch (notifError) {
-          console.error(`Failed to send notification for order ${order._id}:`, notifError);
-        }
-      }
-    }
-
-    return res.json({
-      message: `Successfully updated ${updateResult.modifiedCount} order(s) to ${orderStatus}`,
-      updated: updateResult.modifiedCount,
-      total: orderIds.length,
-      orders: updatedOrders
-    });
-
-  } catch (error) {
-    console.error("Error in batch update order status:", error);
-    return res.status(500).json({ message: error.message });
   }
 });
 
