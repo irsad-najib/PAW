@@ -159,7 +159,9 @@ router.post("/logout", authenticateToken, (_req, res) => {
 // Optional: server-side invalidate (bump tokenVersion) endpoint
 router.post("/logout/invalidate", authenticateToken, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.auth.userId, { $inc: { tokenVersion: 1 } });
+    await User.findByIdAndUpdate(req.auth.userId, {
+      $inc: { tokenVersion: 1 },
+    });
     res.json({ message: "Logged out & tokens invalidated" });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -181,6 +183,52 @@ router.get("/me", authenticateToken, async (req, res) => {
       .lean();
     if (!user) return res.status(404).json({ error: "Not found" });
     res.json(user);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/profile:
+ *   put:
+ *     summary: Update profil user (name, phone)
+ *     tags: [Users]
+ *     security: [ { bearerAuth: [] } ]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated
+ *       400:
+ *         description: Validasi gagal
+ *       401:
+ *         description: Unauthorized
+ */
+router.put("/profile", authenticateToken, async (req, res) => {
+  try {
+    const { name, phone } = req.body;
+    const user = await User.findById(req.auth.userId);
+    if (!user) return res.status(404).json({ error: "User tidak ditemukan" });
+
+    if (name) user.name = name;
+    if (phone !== undefined) user.phone = phone;
+
+    await user.save();
+
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    res.json({ message: "Profile updated", user: userResponse });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -229,14 +277,12 @@ router.put("/password", authenticateToken, async (req, res) => {
         .json({ error: "Password harus mengandung huruf & angka" });
     }
     const user = await User.findById(req.auth.userId);
-      user.tokenVersion = (user.tokenVersion || 0) + 1; // invalidate existing tokens
+    user.tokenVersion = (user.tokenVersion || 0) + 1; // invalidate existing tokens
     if (!user) return res.status(404).json({ error: "User tidak ditemukan" });
     if (!user.password) {
-      return res
-        .status(400)
-        .json({
-          error: "Akun ini login via Google, set password lewat proses khusus",
-        });
+      return res.status(400).json({
+        error: "Akun ini login via Google, set password lewat proses khusus",
+      });
     }
     const valid = await bcrypt.compare(oldPassword, user.password);
     if (!valid) return res.status(401).json({ error: "Password lama salah" });
@@ -300,7 +346,9 @@ router.get(
   }),
   (req, res) => {
     const token = generateToken(req.user);
-    res.json({ message: "Google login success", token });
+    // Redirect to frontend with token
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    res.redirect(`${frontendUrl}/auth/google/callback?token=${token}`);
   }
 );
 

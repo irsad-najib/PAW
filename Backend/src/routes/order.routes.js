@@ -2,7 +2,43 @@ const express = require("express");
 const router = express.Router();
 const Order = require("../models/order.model");
 const Menu = require("../models/menu.model");
+const User = require("../models/user.model");
 const authenticateToken = require("../middleware/JWT");
+const axios = require("axios");
+
+const FONNTE_API_URL = "https://api.fonnte.com/send";
+const FONNTE_TOKEN = process.env.FONNTE_TOKEN;
+
+// Helper function untuk kirim notifikasi WhatsApp
+async function sendWhatsAppNotification(phone, message) {
+  try {
+    if (!FONNTE_TOKEN) {
+      console.warn(
+        "FONNTE_TOKEN not configured, skipping WhatsApp notification"
+      );
+      return null;
+    }
+    const response = await axios.post(
+      FONNTE_API_URL,
+      {
+        target: phone,
+        message: message,
+      },
+      {
+        headers: {
+          Authorization: FONNTE_TOKEN,
+        },
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Failed to send WhatsApp notification:",
+      error.response?.data || error.message
+    );
+    return null;
+  }
+}
 
 function requireAdmin(req, res, next) {
   if (!req.auth || req.auth.role !== "admin") {
@@ -396,6 +432,32 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     if (groupId) {
+      // Send WhatsApp notification for order creation
+      try {
+        const user = await User.findById(userId);
+        if (user && user.phone) {
+          const totalAmount = createdOrders.reduce(
+            (sum, o) => sum + o.totalPrice,
+            0
+          );
+          const message = `Halo ${
+            user.name || user.username
+          }! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Jumlah pesanan: ${
+            createdOrders.length
+          } hari\n- Total: Rp ${totalAmount.toLocaleString(
+            "id-ID"
+          )}\n- Metode: ${
+            paymentMethod === "cash" ? "Tunai" : "Transfer"
+          }\n- Status: ${
+            paymentMethod === "cash" ? "Belum Bayar" : "Menunggu Pembayaran"
+          }\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (notifError) {
+        console.error("Failed to send order notification:", notifError);
+        // Don't fail the order creation if notification fails
+      }
+
       return res.status(201).json({
         message: `Multi-day orders created (${paymentMethod} group ${
           paymentMethod === "cash" ? "unpaid" : "pending"
@@ -406,10 +468,56 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     if (multiDay) {
+      // Send WhatsApp notification for multi-day order
+      try {
+        const user = await User.findById(userId);
+        if (user && user.phone) {
+          const totalAmount = createdOrders.reduce(
+            (sum, o) => sum + o.totalPrice,
+            0
+          );
+          const message = `Halo ${
+            user.name || user.username
+          }! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Jumlah pesanan: ${
+            createdOrders.length
+          } hari\n- Total: Rp ${totalAmount.toLocaleString(
+            "id-ID"
+          )}\n- Metode: ${
+            paymentMethod === "cash" ? "Tunai" : "Transfer"
+          }\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (notifError) {
+        console.error("Failed to send order notification:", notifError);
+      }
+
       return res
         .status(201)
         .json({ message: "Multi-day orders created", orders: createdOrders });
     } else {
+      // Send WhatsApp notification for single order
+      try {
+        const user = await User.findById(userId);
+        if (user && user.phone) {
+          const order = createdOrders[0];
+          const message = `Halo ${
+            user.name || user.username
+          }! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Order ID: ${order._id
+            .toString()
+            .slice(-8)
+            .toUpperCase()}\n- Total: Rp ${order.totalPrice.toLocaleString(
+            "id-ID"
+          )}\n- Tanggal: ${new Date(order.orderDates[0]).toLocaleDateString(
+            "id-ID"
+          )}\n- Waktu: ${order.deliveryTime}\n- Metode: ${
+            paymentMethod === "cash" ? "Tunai" : "Transfer"
+          }\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (notifError) {
+        console.error("Failed to send order notification:", notifError);
+      }
+
       return res
         .status(201)
         .json({ message: "Order created", order: createdOrders[0] });
@@ -436,6 +544,9 @@ router.patch(
       if (doc.orderStatus === "cancelled") {
         return res.status(400).json({ message: "Already cancelled" });
       }
+
+      const previousStatus = doc.orderStatus;
+
       // Jika cancel & belum restore stok
       if (orderStatus === "cancelled" && !doc.stockRestored) {
         for (const it of doc.items) {
@@ -449,6 +560,31 @@ router.patch(
       }
       doc.orderStatus = orderStatus;
       await doc.save();
+
+      // Send WhatsApp notification when order is completed (ready)
+      if (orderStatus === "completed" && previousStatus !== "completed") {
+        try {
+          const user = await User.findById(doc.userId);
+          if (user && user.phone) {
+            const message = `Halo ${
+              user.name || user.username
+            }! ✅\n\nPesanan Anda sudah READY! 🎉\n\nOrder ID: ${doc._id
+              .toString()
+              .slice(-8)
+              .toUpperCase()}\nTanggal: ${new Date(
+              doc.orderDates[0]
+            ).toLocaleDateString("id-ID")}\nWaktu: ${
+              doc.deliveryTime
+            }\n\nPesanan Anda sudah siap untuk ${
+              doc.deliveryType === "Delivery" ? "diantar" : "diambil"
+            }.\n\nTerima kasih! 🍱`;
+            await sendWhatsAppNotification(user.phone, message);
+          }
+        } catch (notifError) {
+          console.error("Failed to send completion notification:", notifError);
+        }
+      }
+
       res.json({ message: "Status updated", order: doc });
     } catch (e) {
       res.status(500).json({ message: e.message });
