@@ -7,7 +7,7 @@ import OrdersDetailTable from "@/components/admin/OrdersDetailTable";
 import NotesModal from "@/components/admin/NotesModal";
 import { useCurrentDate } from "@/hooks/UseCurrentDate";
 import { useAuth } from "@/contexts/AuthContext";
-import { Order } from "@/lib/types";
+import { Order, getMenuName } from "@/lib/types";
 import { fetchAdminOrders, fetchOrderSummary } from "@/lib/api";
 
 const formatISO = (date: Date) => date.toISOString().split("T")[0];
@@ -29,14 +29,35 @@ export default function OrdersPage() {
     setSummaryLoading(true);
     fetchOrderSummary(selectedDate)
       .then((res) => {
-        if (res?.byMealTime?.length) {
-          const mapped = res.byMealTime.flatMap((m) =>
-            (m.items || []).map((item) => ({
-              menu: item.name,
-              ordered: item.portions,
-              notes: item.notes || [],
-            }))
-          );
+        if (res?.orders?.length) {
+          // Process orders to create menu summary
+          const menuMap = new Map<string, { portions: number; notes: string[] }>();
+          
+          res.orders.forEach((order: any) => {
+            if (order.items && Array.isArray(order.items)) {
+              order.items.forEach((item: any) => {
+                const menuName = getMenuName(item.menuId);
+                
+                if (!menuMap.has(menuName)) {
+                  menuMap.set(menuName, { portions: 0, notes: [] });
+                }
+                
+                const menuData = menuMap.get(menuName)!;
+                menuData.portions += item.quantity || 0;
+                
+                if (item.specialNotes && item.specialNotes.trim()) {
+                  menuData.notes.push(item.specialNotes.trim());
+                }
+              });
+            }
+          });
+          
+          const mapped = Array.from(menuMap.entries()).map(([name, data]) => ({
+            menu: name,
+            ordered: data.portions,
+            notes: data.notes,
+          }));
+          
           setSummaryData(mapped);
         } else {
           setSummaryData([]);

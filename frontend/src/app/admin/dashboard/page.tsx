@@ -8,7 +8,7 @@ import NotesModal from "@/components/admin/NotesModal";
 import AdminPageHeader from "@/components/admin/AdminPageHeader";
 import { useCurrentDate } from "@/hooks/UseCurrentDate";
 import { fetchAdminOrders, fetchOrderSummary } from "@/lib/api";
-import { Order } from "@/lib/types";
+import { Order, getMenuName } from "@/lib/types";
 import { formatDateLongID } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -17,13 +17,14 @@ export default function DashboardPage() {
   const currentDate = useCurrentDate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [stat, setStat] = useState({
     totalOrdersToday: 0,
     totalRevenue: 0,
     totalUnpaid: 0,
   });
   type MealItem = { name: string; portions: number; notes: string[]; stock?: number };
-  type MealGroup = { mealTime: string; totalPortions: number; items: MealItem[] };
+  type MealGroup = { mealTime: string; totalPortions: number; items: MealItem[]; orderIds?: string[] };
   const [todayMeal, setTodayMeal] = useState<MealGroup[]>([]);
   const [tomorrowMeal, setTomorrowMeal] = useState<MealGroup[]>([]);
   const [notesModal, setNotesModal] = useState<{
@@ -35,10 +36,19 @@ export default function DashboardPage() {
     let isMounted = true;
     if (authLoading || !user) return () => { isMounted = false; };
     setLoadingOrders(true);
-    fetchAdminOrders({ limit: 50 })
+    const todayISO = new Date().toISOString().split("T")[0];
+    // Fetch all recent orders and filter by orderDates client-side
+    fetchAdminOrders({ limit: 200 })
       .then((res) => {
         if (!isMounted) return;
-        setOrders(res.items || []);
+        // Filter orders that have today's date in their orderDates array
+        const todayOrders = (res.items || []).filter((order: Order) => {
+          return order.orderDates && order.orderDates.some(date => {
+            const orderDate = date.split('T')[0];
+            return orderDate === todayISO;
+          });
+        });
+        setOrders(todayOrders);
       })
       .catch((err) => {
         console.warn("Gagal memuat pesanan dashboard:", err.message);
@@ -62,23 +72,58 @@ export default function DashboardPage() {
     fetchOrderSummary(todayISO)
       .then((res) => {
         if (!res) return;
-        setStat((prev) => ({
-          totalOrdersToday: res.totalOrders ?? prev.totalOrdersToday,
-          totalRevenue: res.revenuePaid ?? prev.totalRevenue,
-          totalUnpaid: res.totalUnpaidCash ?? prev.totalUnpaid,
-        }));
-        if (Array.isArray(res.byMealTime) && res.byMealTime.length) {
-          setTodayMeal(
-            res.byMealTime.map((m) => ({
-              mealTime: m.mealTime,
-              totalPortions: m.totalPortions,
-              items: (m.items || []).map((it) => ({
-                name: it.name,
-                portions: it.portions,
-                notes: it.notes ?? [],
-              })),
-            }))
-          );
+        // Update stats from summary
+        if (res.summary) {
+          setStat({
+            totalOrdersToday: res.summary.totalOrders ?? 0,
+            totalRevenue: res.summary.totalRevenue ?? 0,
+            totalUnpaid: 0, // Calculate from orders if needed
+          });
+        }
+        // Process orders to create meal time summary
+        if (res.orders && Array.isArray(res.orders) && res.orders.length) {
+          const mealTimeMap = new Map<string, { 
+            menuMap: Map<string, { portions: number; notes: string[] }>,
+            orderIds: string[]
+          }>();
+          
+          res.orders.forEach((order: any) => {
+            const mealTime = order.deliveryTime || 'Unknown';
+            if (!mealTimeMap.has(mealTime)) {
+              mealTimeMap.set(mealTime, { menuMap: new Map(), orderIds: [] });
+            }
+            const mealData = mealTimeMap.get(mealTime)!;
+            mealData.orderIds.push(order._id);
+            
+            if (order.items && Array.isArray(order.items)) {
+              order.items.forEach((item: any) => {
+                const menuName = getMenuName(item.menuId);
+                
+                if (!mealData.menuMap.has(menuName)) {
+                  mealData.menuMap.set(menuName, { portions: 0, notes: [] });
+                }
+                
+                const menuData = mealData.menuMap.get(menuName)!;
+                menuData.portions += item.quantity || 0;
+                
+                if (item.specialNotes && item.specialNotes.trim()) {
+                  menuData.notes.push(item.specialNotes.trim());
+                }
+              });
+            }
+          });
+          
+          const mealGroups = Array.from(mealTimeMap.entries()).map(([mealTime, mealData]) => {
+            const items = Array.from(mealData.menuMap.entries()).map(([name, data]) => ({
+              name,
+              portions: data.portions,
+              notes: data.notes,
+            }));
+            const totalPortions = items.reduce((sum, item) => sum + item.portions, 0);
+            return { mealTime, totalPortions, items, orderIds: mealData.orderIds };
+          });
+          
+          setTodayMeal(mealGroups);
         }
       })
       .catch(() => {
@@ -87,26 +132,52 @@ export default function DashboardPage() {
 
     fetchOrderSummary(tomorrowISO)
       .then((res) => {
-        if (!res || !Array.isArray(res.byMealTime)) return;
-        if (res.byMealTime.length) {
-          setTomorrowMeal(
-            res.byMealTime.map((m) => ({
-              mealTime: m.mealTime,
-              totalPortions: m.totalPortions,
-              items: (m.items ?? []).map((it) => ({
-                name: it.name,
-                portions: it.portions,
-                notes: Array.isArray(it.notes) ? it.notes : it.notes ? [it.notes] : [],
-                stock: typeof (it as any).stock === "number" ? (it as any).stock : undefined,
-              })),
-            }))
-          );
+        if (!res || !res.orders || !Array.isArray(res.orders)) return;
+        if (res.orders.length) {
+          const mealTimeMap = new Map<string, Map<string, { portions: number; notes: string[] }>>();
+          
+          res.orders.forEach((order: any) => {
+            const mealTime = order.deliveryTime || 'Unknown';
+            if (!mealTimeMap.has(mealTime)) {
+              mealTimeMap.set(mealTime, new Map());
+            }
+            const menuMap = mealTimeMap.get(mealTime)!;
+            
+            if (order.items && Array.isArray(order.items)) {
+              order.items.forEach((item: any) => {
+                const menuName = getMenuName(item.menuId);
+                
+                if (!menuMap.has(menuName)) {
+                  menuMap.set(menuName, { portions: 0, notes: [] });
+                }
+                
+                const menuData = menuMap.get(menuName)!;
+                menuData.portions += item.quantity || 0;
+                
+                if (item.specialNotes && item.specialNotes.trim()) {
+                  menuData.notes.push(item.specialNotes.trim());
+                }
+              });
+            }
+          });
+          
+          const mealGroups = Array.from(mealTimeMap.entries()).map(([mealTime, menuMap]) => {
+            const items = Array.from(menuMap.entries()).map(([name, data]) => ({
+              name,
+              portions: data.portions,
+              notes: data.notes,
+            }));
+            const totalPortions = items.reduce((sum, item) => sum + item.portions, 0);
+            return { mealTime, totalPortions, items };
+          });
+          
+          setTomorrowMeal(mealGroups);
         }
       })
       .catch(() => {
         /* fallback dummy */
       });
-  }, [authLoading, user]);
+  }, [authLoading, user, refreshTrigger]);
 
   return (
     <div>
@@ -127,7 +198,7 @@ export default function DashboardPage() {
           borderColor="border-primary"
         />
         <StatCard
-          title="Pendapatan Hari Ini (Lunas)"
+          title="Pendapatan Hari Ini"
           value={`Rp ${stat.totalRevenue.toLocaleString("id-ID")}`}
           borderColor="border-green-500"
         />
@@ -146,6 +217,7 @@ export default function DashboardPage() {
           <ProductionSummary
             mealData={todayMeal}
             onOpenNotes={(label, notes) => setNotesModal({ title: label, notes })}
+            onStatusUpdated={() => setRefreshTrigger(prev => prev + 1)}
           />
         </div>
       </div>

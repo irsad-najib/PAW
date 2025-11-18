@@ -7,6 +7,8 @@ import {
   OrderPaymentMethod,
   OrderPaymentStatus,
   OrderStatus,
+  getUserDisplayName,
+  getMenuName,
 } from "@/lib/types";
 import { formatRupiah, formatDateID } from "@/lib/utils";
 import {
@@ -18,6 +20,7 @@ import {
 import { OrderActionButton } from "./order-controls/OrderActionButtons";
 import { PaymentScopeModal } from "./order-controls/PaymentScopeModal";
 import { ConfirmActionModal } from "./order-controls/ConfirmActionModal";
+import { updateOrderStatus, markOrderPaid, markGroupPaid } from "@/lib/api";
 
 interface OrdersDetailTableProps {
   selectedDate: string;
@@ -119,17 +122,15 @@ export default function OrdersDetailTable({
       const orderDate = order.orderDates?.[0]
         ? order.orderDates[0].split("T")[0]
         : "";
-      const itemsSummary =
-        order.items.length > 0
-          ? order.items
-              .map((item) => `${item.menuId} x${item.quantity}`)
+        const itemsSummary =
+          order.items && order.items.length > 0
+            ? order.items
+              .map((item) => `${getMenuName(item.menuId)} x${item.quantity}`)
               .join(", ")
-          : "-";
-
-      return {
+          : "-";      return {
         id: order._id,
         date: orderDate,
-        customer: order.customerName ?? order.userId,
+        customer: order.customerName ?? getUserDisplayName(order.userId),
         itemsSummary,
         time: order.deliveryTime,
         type: order.deliveryType,
@@ -192,7 +193,7 @@ export default function OrdersDetailTable({
     setPaymentModal({ order, mode, nextStatus });
   };
 
-  const handlePaymentSelect = (scope: "single" | "group") => {
+  const handlePaymentSelect = async (scope: "single" | "group") => {
     if (!paymentModal) return;
     const { order, mode, nextStatus } = paymentModal;
 
@@ -203,11 +204,25 @@ export default function OrdersDetailTable({
             .map((o) => o._id)
         : [order.id];
 
-    setPaymentStatus(targetIds, "paid");
+    try {
+      // Call API to mark as paid
+      if (scope === "group" && order.groupId) {
+        await markGroupPaid(order.groupId);
+      } else {
+        await markOrderPaid(order.id);
+      }
 
-    // Status selalu hanya order ini saja yang berubah
-    if (mode === "status" && nextStatus) {
-      handleAdvanceStatus(order.id, nextStatus);
+      // Update local state
+      setPaymentStatus(targetIds, "paid");
+
+      // Status selalu hanya order ini saja yang berubah
+      if (mode === "status" && nextStatus) {
+        await updateOrderStatus(order.id, nextStatus);
+        handleAdvanceStatus(order.id, nextStatus);
+      }
+    } catch (err: any) {
+      console.error("Gagal update pembayaran:", err.message);
+      alert("Gagal update pembayaran: " + err.message);
     }
 
     setPaymentModal(null);
@@ -492,7 +507,7 @@ export default function OrdersDetailTable({
                 <ul className="list-disc list-inside space-y-1 text-sm text-gray-800">
                   {orderDetailModal.items.map((item, idx) => (
                     <li key={idx}>
-                      {item.menuId} x{item.quantity}{" "}
+                      {getMenuName(item.menuId)} x{item.quantity}{" "}
                       {item.specialNotes ? `(${item.specialNotes})` : ""}
                     </li>
                   ))}
@@ -541,8 +556,14 @@ export default function OrdersDetailTable({
             ORDER_STATUS_LABELS[confirmAction.nextStatus]
           }?`}
           onClose={() => setConfirmAction(null)}
-          onConfirm={() => {
-            proceedAfterConfirm(confirmAction.order, confirmAction.nextStatus);
+          onConfirm={async () => {
+            try {
+              await updateOrderStatus(confirmAction.order.id, confirmAction.nextStatus);
+              proceedAfterConfirm(confirmAction.order, confirmAction.nextStatus);
+            } catch (err: any) {
+              console.error("Gagal update status:", err.message);
+              alert("Gagal update status: " + err.message);
+            }
             setConfirmAction(null);
           }}
         />

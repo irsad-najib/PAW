@@ -2,101 +2,46 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
-import Navbar from "@/component/utils/navbar";
+import Image from "next/image";
 import api from "@/component/api";
-import { Menu, OrderDeliveryTime } from "@/lib/types";
+import { useAuth } from "@/contexts/AuthContext";
 
-type CartItem = {
-  menu: Menu;
+interface CartItem {
+  menu: any;
   quantity: number;
-<<<<<<< HEAD
-  date: string; // ISO date string
-  deliveryTime: OrderDeliveryTime;
-  specialNotes?: string;
-};
-
-type GroupedOrder = {
-  date: string;
-  deliveryTime: OrderDeliveryTime;
-  items: CartItem[];
-  subtotal: number;
-};
-=======
   notes: string;
   orderDate?: string;
 }
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { user, loading } = useAuth();
-
+  const { user, loading: authLoading } = useAuth();
   const [cart, setCart] = useState<CartItem[]>([]);
-<<<<<<< HEAD
-  const [deliveryType, setDeliveryType] = useState<"Delivery" | "Pickup">(
-    "Delivery"
-  );
-=======
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [deliveryType, setDeliveryType] = useState<"Delivery" | "Pickup">("Delivery");
   const [deliveryTime, setDeliveryTime] = useState<"Pagi" | "Siang" | "Sore">("Pagi");
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer">("cash");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer">(
-    "cash"
-  );
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login?redirect=/checkout");
+    if (!authLoading && !user) {
+      router.push("/login");
+      return;
     }
-  }, [user, loading, router]);
 
-  useEffect(() => {
-    // Load cart from localStorage or URL params
-    const loadCart = () => {
-      const cartData = localStorage.getItem("cart");
-      if (cartData) {
-        try {
-          const parsed = JSON.parse(cartData);
-          setCart(parsed);
-        } catch (error) {
-          console.error("Failed to parse cart:", error);
-        }
-      }
-    };
+    // Load cart from sessionStorage
+    const cartData = sessionStorage.getItem("cart");
+    const dateData = sessionStorage.getItem("selectedDate");
 
-    loadCart();
-
-    // Pre-fill user data if logged in
-    if (user) {
-      setCustomerName(user.name || user.username || "");
-      // Assuming user might have phone in profile, otherwise leave empty
+    if (!cartData || !dateData) {
+      router.push("/");
+      return;
     }
-  }, [user]);
 
-<<<<<<< HEAD
-  // Group cart items by date and delivery time
-  const groupedOrders: GroupedOrder[] = [];
-  const grouped = new Map<string, CartItem[]>();
-
-  cart.forEach((item) => {
-    const key = `${item.date}_${item.deliveryTime}`;
-    if (!grouped.has(key)) {
-      grouped.set(key, []);
-    }
-    grouped.get(key)?.push(item);
-  });
-
-  grouped.forEach((items, key) => {
-    const [date, deliveryTime] = key.split("_");
-    const subtotal = items.reduce(
-      (sum, item) => sum + item.menu.price * item.quantity,
-=======
     setCart(JSON.parse(cartData));
     try {
       const parsed = JSON.parse(dateData);
@@ -139,35 +84,18 @@ export default function CheckoutPage() {
   const getTotalPrice = () => {
     return cart.reduce(
       (total, item) => total + item.menu.price * item.quantity,
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
       0
     );
-    groupedOrders.push({
-      date,
-      deliveryTime: deliveryTime as OrderDeliveryTime,
-      items,
-      subtotal,
-    });
-  });
+  };
 
-  // Sort by date
-  groupedOrders.sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-  );
-
-  const grandTotal = groupedOrders.reduce(
-    (sum, group) => sum + group.subtotal,
-    0
-  );
-
-  const handleCheckout = async () => {
+  const handleSubmitOrder = async () => {
     if (!customerName || !customerPhone) {
-      alert("Mohon isi nama dan nomor telepon");
+      setError("Nama dan nomor telepon wajib diisi!");
       return;
     }
 
     if (deliveryType === "Delivery" && !deliveryAddress) {
-      alert("Mohon isi alamat pengiriman");
+      setError("Alamat pengiriman wajib diisi untuk delivery!");
       return;
     }
     if (!selectedDates.length) {
@@ -175,18 +103,10 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (groupedOrders.length === 0) {
-      alert("Keranjang kosong");
-      return;
-    }
-
-    setIsProcessing(true);
+    setLoading(true);
+    setError("");
 
     try {
-<<<<<<< HEAD
-      // Jika multi-hari, kita kirim sebagai multi-day order ke backend
-      // Backend akan split jadi beberapa order per tanggal
-=======
       const orderData = {
         items: cart.map((item) => ({
           menuId: item.menu._id,
@@ -201,243 +121,56 @@ export default function CheckoutPage() {
         customerName,
         customerPhone,
       };
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
 
-      const uniqueDates = [...new Set(cart.map((item) => item.date))];
+      await api.post("/orders", orderData);
 
-      // Prepare order items grouped by date
-      const ordersByDate = uniqueDates.map((date) => {
-        const itemsForDate = cart.filter((item) => item.date === date);
-        const deliveryTime = itemsForDate[0].deliveryTime;
+      // Clear cart
+      sessionStorage.removeItem("cart");
+      sessionStorage.removeItem("selectedDate");
 
-        return {
-          orderDate: date,
-          items: itemsForDate.map((item) => ({
-            menuId: item.menu._id,
-            quantity: item.quantity,
-            specialNotes: item.specialNotes || "",
-          })),
-          deliveryTime,
-        };
-      });
-
-      // Jika hanya 1 tanggal, gunakan single order endpoint
-      if (uniqueDates.length === 1) {
-        const orderData = {
-          items: cart.map((item) => ({
-            menuId: item.menu._id,
-            quantity: item.quantity,
-            specialNotes: item.specialNotes || "",
-          })),
-          orderDate: uniqueDates[0],
-          deliveryType,
-          deliveryAddress:
-            deliveryType === "Delivery" ? deliveryAddress : undefined,
-          deliveryTime: cart[0].deliveryTime,
-          paymentMethod,
-          customerName,
-          customerPhone,
-        };
-
-        const response = await api.post("/orders", orderData);
-
-        // Clear cart
-        localStorage.removeItem("cart");
-
-        // Redirect to order success page
-        alert("Pesanan berhasil dibuat!");
-        router.push(`/orders?orderId=${response.data._id}`);
-      } else {
-        // Multi-hari: kirim ke multi-day endpoint
-        const multiDayData = {
-          orders: ordersByDate,
-          deliveryType,
-          deliveryAddress:
-            deliveryType === "Delivery" ? deliveryAddress : undefined,
-          paymentMethod,
-          customerName,
-          customerPhone,
-        };
-
-        const response = await api.post("/orders/multi-day", multiDayData);
-
-        console.log("Multi-day order created:", response.data);
-
-        // Clear cart
-        localStorage.removeItem("cart");
-
-        // Redirect to orders list
-        alert(
-          `Berhasil membuat ${uniqueDates.length} pesanan untuk ${uniqueDates.length} hari!`
-        );
-        router.push("/orders");
-      }
-    } catch (error: unknown) {
-      console.error("Checkout error:", error);
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : (error as { response?: { data?: { message?: string } } })?.response
-              ?.data?.message || "Gagal membuat pesanan. Silakan coba lagi.";
-      alert(errorMessage);
+      // Redirect to success page or orders page
+      alert("Pesanan berhasil dibuat!");
+      router.push("/orders");
+    } catch (err: any) {
+      console.error("Order error:", err);
+      setError(err.response?.data?.message || "Gagal membuat pesanan. Silakan coba lagi.");
     } finally {
-      setIsProcessing(false);
+      setLoading(false);
     }
   };
 
-  const removeItem = (index: number) => {
-    const newCart = cart.filter((_, i) => i !== index);
-    setCart(newCart);
-    localStorage.setItem("cart", JSON.stringify(newCart));
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("id-ID", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  };
-
-  const formatRupiah = (amount: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  if (loading) {
+  if (authLoading || cart.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Memuat...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-4xl mx-auto px-4">
+        <button
+          onClick={() => router.back()}
+          className="mb-6 text-green-600 hover:text-green-700 font-semibold flex items-center gap-2">
+          ← Kembali
+        </button>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-8">Checkout</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">
+          Checkout Pesanan
+        </h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left: Order Summary */}
+          {/* Left: Form */}
           <div className="lg:col-span-2 space-y-6">
-            {groupedOrders.length === 0 ? (
-              <div className="bg-white rounded-xl shadow p-8 text-center">
-                <p className="text-gray-500 mb-4">Keranjang kosong</p>
-                <button
-                  onClick={() => router.push("/")}
-                  className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                  Pilih Menu
-                </button>
-              </div>
-            ) : (
-              <>
-                {groupedOrders.map((group, groupIdx) => (
-                  <div
-                    key={groupIdx}
-                    className="bg-white rounded-xl shadow p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h2 className="text-xl font-bold text-gray-800">
-                          {formatDate(group.date)}
-                        </h2>
-                        <p className="text-sm text-gray-600">
-                          Waktu:{" "}
-                          <span className="font-medium">
-                            {group.deliveryTime}
-                          </span>
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-600">Subtotal</p>
-                        <p className="text-lg font-bold text-green-600">
-                          {formatRupiah(group.subtotal)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      {group.items.map((item, itemIdx) => {
-                        const cartIdx = cart.findIndex(
-                          (c) =>
-                            c.menu._id === item.menu._id &&
-                            c.date === group.date &&
-                            c.deliveryTime === group.deliveryTime
-                        );
-
-                        return (
-                          <div
-                            key={itemIdx}
-                            className="flex items-center justify-between border-b pb-3 last:border-0">
-                            <div className="flex-1">
-                              <h3 className="font-medium text-gray-800">
-                                {item.menu.name}
-                              </h3>
-                              <p className="text-sm text-gray-600">
-                                {formatRupiah(item.menu.price)} ×{" "}
-                                {item.quantity}
-                              </p>
-                              {item.specialNotes && (
-                                <p className="text-xs text-blue-600 mt-1">
-                                  Catatan: {item.specialNotes}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <p className="font-bold text-gray-800">
-                                {formatRupiah(item.menu.price * item.quantity)}
-                              </p>
-                              <button
-                                onClick={() => removeItem(cartIdx)}
-                                className="text-red-600 hover:text-red-700">
-                                <svg
-                                  className="w-5 h-5"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24">
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                  />
-                                </svg>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-
-                {groupedOrders.length > 1 && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                    <p className="text-sm text-blue-800">
-                      <strong>Multi-Hari:</strong> Pesanan Anda mencakup{" "}
-                      {groupedOrders.length} hari berbeda. Setiap hari akan
-                      dibuat sebagai pesanan terpisah dengan informasi
-                      pengiriman yang sama.
-                    </p>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Right: Customer Info & Payment */}
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">
-                Informasi Pelanggan
+            {/* Customer Info */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">
+                Informasi Pemesan
               </h2>
-
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -447,11 +180,10 @@ export default function CheckoutPage() {
                     type="text"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="Nama Anda"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="Masukkan nama lengkap"
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Nomor Telepon *
@@ -460,15 +192,10 @@ export default function CheckoutPage() {
                     type="tel"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder="08xxxxxxxxxx"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="08123456789"
                   />
                 </div>
-<<<<<<< HEAD
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-=======
               </div>
             </div>
 
@@ -500,28 +227,24 @@ export default function CheckoutPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
                     Tipe Pengiriman *
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => setDeliveryType("Delivery")}
-                      className={`px-4 py-2 rounded-lg border ${
-                        deliveryType === "Delivery"
-                          ? "bg-green-600 text-white border-green-600"
-                          : "bg-white text-gray-700 border-gray-300"
-                      }`}>
-                      Diantar
-                    </button>
-                    <button
-                      onClick={() => setDeliveryType("Pickup")}
-                      className={`px-4 py-2 rounded-lg border ${
-                        deliveryType === "Pickup"
-                          ? "bg-green-600 text-white border-green-600"
-                          : "bg-white text-gray-700 border-gray-300"
-                      }`}>
-                      Diambil
-                    </button>
+                  <div className="flex gap-3">
+                    {[
+                      { value: "Delivery", label: "Diantar" },
+                      { value: "Pickup", label: "Diambil" },
+                    ].map((type) => (
+                      <button
+                        key={type.value}
+                        onClick={() => setDeliveryType(type.value as any)}
+                        className={`flex-1 py-2 rounded-lg font-semibold transition ${
+                          deliveryType === type.value
+                            ? "bg-green-600 text-white"
+                            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                        }`}>
+                        {type.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -534,58 +257,14 @@ export default function CheckoutPage() {
                       value={deliveryAddress}
                       onChange={(e) => setDeliveryAddress(e.target.value)}
                       rows={3}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="Alamat lengkap pengiriman"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Masukkan alamat lengkap"
                     />
                   </div>
                 )}
-
-<<<<<<< HEAD
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Metode Pembayaran *
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => setPaymentMethod("cash")}
-                      className={`px-4 py-2 rounded-lg border ${
-                        paymentMethod === "cash"
-                          ? "bg-green-600 text-white border-green-600"
-                          : "bg-white text-gray-700 border-gray-300"
-                      }`}>
-                      Cash
-                    </button>
-                    <button
-                      onClick={() => setPaymentMethod("transfer")}
-                      className={`px-4 py-2 rounded-lg border ${
-                        paymentMethod === "transfer"
-                          ? "bg-green-600 text-white border-green-600"
-                          : "bg-white text-gray-700 border-gray-300"
-                      }`}>
-                      Transfer
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">
-                Ringkasan Pembayaran
-              </h2>
-
-              <div className="space-y-2 mb-4">
-                <div className="flex justify-between text-gray-600">
-                  <span>Subtotal</span>
-                  <span>{formatRupiah(grandTotal)}</span>
-                </div>
-                {deliveryType === "Delivery" && (
-                  <div className="flex justify-between text-gray-600">
-                    <span>Biaya Pengiriman</span>
-                    <span>Gratis</span>
-                  </div>
-                )}
-=======
             {/* Payment Method */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-4">
@@ -666,23 +345,28 @@ export default function CheckoutPage() {
                     </div>
                   );
                 })}
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
               </div>
 
-              <div className="border-t pt-4 mb-6">
-                <div className="flex justify-between text-xl font-bold text-gray-800">
-                  <span>Total</span>
+              <div className="border-t pt-4">
+                <div className="flex justify-between items-center text-lg font-bold">
+                  <span className="text-gray-900">Total:</span>
                   <span className="text-green-600">
-                    {formatRupiah(grandTotal)}
+                    Rp {getTotalPrice().toLocaleString("id-ID")}
                   </span>
                 </div>
               </div>
 
+              {error && (
+                <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+
               <button
-                onClick={handleCheckout}
-                disabled={isProcessing || groupedOrders.length === 0}
-                className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
-                {isProcessing ? "Memproses..." : "Buat Pesanan"}
+                onClick={handleSubmitOrder}
+                disabled={loading}
+                className="w-full mt-6 py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                {loading ? "Memproses..." : "Buat Pesanan"}
               </button>
             </div>
           </div>

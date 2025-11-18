@@ -9,22 +9,14 @@ import "swiper/css";
 import api from "../component/api";
 import { useRouter } from "next/navigation";
 
-type CartItem = {
+interface CartItem {
   menu: any;
   quantity: number;
-<<<<<<< HEAD
-  date: string;
-  deliveryTime: "Pagi" | "Siang" | "Sore";
-  specialNotes: string;
-};
-=======
   notes: string;
   orderDate: string; // YYYY-MM-DD
 }
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
 
 export default function HomePage() {
-  const router = useRouter();
   // 30 hari ke depan
   const dates = Array.from({ length: 30 }, (_, i) => {
     const d = new Date();
@@ -32,50 +24,22 @@ export default function HomePage() {
     return d;
   });
 
+  const router = useRouter();
   const [selected, setSelected] = useState<Date | null>(dates[0]);
   const [menus, setMenus] = useState<any[]>([]);
   const [scrollIndex, setScrollIndex] = useState(0);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedMenu, setSelectedMenu] = useState<any>(null);
-  const [quantity, setQuantity] = useState(1);
-  const [deliveryTime, setDeliveryTime] = useState<"Pagi" | "Siang" | "Sore">(
-    "Pagi"
-  );
-  const [specialNotes, setSpecialNotes] = useState("");
+  const [showCheckout, setShowCheckout] = useState(false);
   const swiperRef = useRef<any>(null);
 
-<<<<<<< HEAD
-  // Load cart from localStorage on mount
-  useEffect(() => {
-    const savedCart = localStorage.getItem("cart");
-    if (savedCart) {
-      try {
-        setCart(JSON.parse(savedCart));
-      } catch (error) {
-        console.error("Failed to parse cart:", error);
-      }
-    }
-  }, []);
-
-  // Save cart to localStorage whenever it changes
-  useEffect(() => {
-    if (cart.length > 0) {
-      localStorage.setItem("cart", JSON.stringify(cart));
-    }
-  }, [cart]);
-=======
   const selectedDateKey = selected
     ? selected.toISOString().split("T")[0]
     : "";
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
 
   const onSelect = (date: Date) => {
     setSelected(date);
   };
 
-<<<<<<< HEAD
-=======
   const addToCart = (menu: any) => {
     if (!selectedDateKey) return;
     const existing = cart.find(
@@ -129,7 +93,6 @@ export default function HomePage() {
     return cart.reduce((total, item) => total + item.quantity, 0);
   };
 
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
   useEffect(() => {
     // Fetch menus and filter by selected date using backend `date` query param
     const fetchMenus = async () => {
@@ -151,69 +114,11 @@ export default function HomePage() {
     fetchMenus();
   }, [selected]);
 
-<<<<<<< HEAD
-  const handleAddToCart = (menu: any) => {
-    setSelectedMenu(menu);
-    setQuantity(1);
-    setDeliveryTime("Pagi");
-    setSpecialNotes("");
-    setShowAddModal(true);
-  };
-
-  const confirmAddToCart = () => {
-    if (!selected) return;
-
-    const newItem: CartItem = {
-      menu: selectedMenu,
-      quantity,
-      date: selected.toISOString().split("T")[0],
-      deliveryTime,
-      specialNotes,
-    };
-
-    setCart((prev) => [...prev, newItem]);
-    setShowAddModal(false);
-    alert("Menu ditambahkan ke keranjang!");
-  };
-
-  const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-
-  const goToCheckout = () => {
-    if (cart.length === 0) {
-      alert("Keranjang masih kosong!");
-      return;
-    }
-    router.push("/checkout");
-  };
-=======
   const uniqueDates = Array.from(new Set(cart.map((c) => c.orderDate).filter(Boolean)));
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
 
   return (
     <>
       <Navbar />
-
-      {/* Floating Cart Button */}
-      {cart.length > 0 && (
-        <button
-          onClick={goToCheckout}
-          className="fixed bottom-6 right-6 z-50 bg-green-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-green-700 flex items-center gap-2">
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
-            />
-          </svg>
-          <span className="font-semibold">{cartItemCount} Item</span>
-        </button>
-      )}
-
       <div className="bg-[#F7F7F7] text-black min-h-screen w-full">
         <Image
           src="/home-bg.png"
@@ -272,30 +177,12 @@ export default function HomePage() {
           </div>
 
           {/* Menu list for selected date */}
-          <div className="w-full max-w-2xl mt-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 px-2">
+          <div className="w-full max-w-4xl mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4 px-2 pb-24">
             {menus.length === 0 ? (
               <div className="col-span-full text-center text-gray-500">
                 Tidak ada menu untuk tanggal ini.
               </div>
             ) : (
-<<<<<<< HEAD
-              menus.map((m: any) => (
-                <div
-                  key={m._id}
-                  className="bg-white rounded-lg shadow p-3 flex flex-col items-start">
-                  {m.image ? (
-                    // use Next.js Image for better performance (simple fixed size)
-                    <Image
-                      src={m.image}
-                      alt={m.name}
-                      width={400}
-                      height={200}
-                      className="w-full h-32 object-cover rounded mb-2"
-                    />
-                  ) : (
-                    <div className="w-full h-32 bg-gray-100 rounded mb-2 flex items-center justify-center text-gray-400">
-                      No Image
-=======
               menus.map((m: any) => {
                 const cartItem = cart.find(
                   (item) => item.menu._id === m._id && item.orderDate === selectedDateKey
@@ -322,22 +209,10 @@ export default function HomePage() {
                     <div className="font-bold text-lg mb-1">{m.name}</div>
                     <div className="text-sm text-gray-600 mb-2 flex-grow">
                       {m.description || "Keterangan Produk"}
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
                     </div>
-                  )}
-                  <div className="font-semibold">{m.name}</div>
-                  <div className="text-sm text-gray-600">{m.description}</div>
-                  <div className="mt-2 flex items-center justify-between w-full">
-                    <div className="font-medium text-green-700">
-                      Rp {m.price?.toLocaleString("id-ID")}
+                    <div className="text-lg font-bold text-green-600 mb-3">
+                      Rp {m.price?.toLocaleString("id-ID") || 0}
                     </div>
-<<<<<<< HEAD
-                    <button
-                      onClick={() => handleAddToCart(m)}
-                      className="bg-green-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-green-700">
-                      + Keranjang
-                    </button>
-=======
 
                     {quantity > 0 ? (
                       <div className="flex items-center justify-center gap-3">
@@ -362,72 +237,48 @@ export default function HomePage() {
                         Pesan
                       </button>
                     )}
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
-      </div>
 
-      {/* Add to Cart Modal */}
-      {showAddModal && selectedMenu && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">
-                  {selectedMenu.name}
-                </h3>
-                <p className="text-sm text-gray-600">
-                  {selectedMenu.description}
-                </p>
-                <p className="text-lg font-bold text-green-600 mt-2">
-                  Rp {selectedMenu.price?.toLocaleString("id-ID")}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-gray-500 hover:text-gray-700">
-                ✕
-              </button>
-            </div>
+        {/* Floating Cart Button */}
+        {cart.length > 0 && (
+          <div className="fixed bottom-4 left-0 right-0 px-4 z-50 flex justify-center">
+            <button
+              onClick={() => setShowCheckout(true)}
+              className="bg-green-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-green-700 transition flex items-center gap-3 max-w-md w-full justify-between">
+              <span className="flex items-center gap-2">
+                <span className="bg-white text-green-600 rounded-full w-6 h-6 flex items-center justify-center font-bold text-sm">
+                  {getTotalItems()}
+                </span>
+                <span className="font-semibold">Items</span>
+              </span>
+              <span className="font-bold">
+                Total: Rp {getTotalPrice().toLocaleString("id-ID")}
+              </span>
+              <span className="font-semibold">Lihat Checkout →</span>
+            </button>
+          </div>
+        )}
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tanggal Pesan
-                </label>
-                <div className="px-4 py-2 bg-gray-100 rounded-lg">
-                  {selected?.toLocaleDateString("id-ID", {
-                    weekday: "long",
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </div>
+        {/* Checkout Modal */}
+        {showCheckout && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white/70 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
+              <div className="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-900">
+                  Checkout Pesanan
+                </h2>
+                <button
+                  onClick={() => setShowCheckout(false)}
+                  className="text-gray-500 hover:text-gray-700 text-2xl">
+                  ✕
+                </button>
               </div>
 
-<<<<<<< HEAD
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Waktu Pengiriman
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["Pagi", "Siang", "Sore"] as const).map((time) => (
-                    <button
-                      key={time}
-                      onClick={() => setDeliveryTime(time)}
-                      className={`px-3 py-2 rounded-lg border ${
-                        deliveryTime === time
-                          ? "bg-green-600 text-white border-green-600"
-                          : "bg-white text-gray-700 border-gray-300"
-                      }`}>
-                      {time}
-                    </button>
-                  ))}
-=======
               <div className="p-6 space-y-6">
                 {uniqueDates.map((dateKey) => {
                   const itemsForDate = cart.filter((item) => item.orderDate === dateKey);
@@ -524,44 +375,8 @@ export default function HomePage() {
                       Rp {getTotalPrice().toLocaleString("id-ID")}
                     </span>
                   </div>
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
                 </div>
-              </div>
 
-<<<<<<< HEAD
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Jumlah
-                </label>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="w-10 h-10 bg-gray-200 rounded-lg hover:bg-gray-300">
-                    -
-                  </button>
-                  <span className="text-xl font-bold w-12 text-center">
-                    {quantity}
-                  </span>
-                  <button
-                    onClick={() => setQuantity(quantity + 1)}
-                    className="w-10 h-10 bg-gray-200 rounded-lg hover:bg-gray-300">
-                    +
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Catatan Khusus (Opsional)
-                </label>
-                <textarea
-                  value={specialNotes}
-                  onChange={(e) => setSpecialNotes(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                  placeholder="Contoh: Tidak pedas, tanpa sambal, dll."
-                />
-=======
                 <button
                   onClick={() => {
                     // Simpan cart ke sessionStorage dan redirect ke halaman checkout
@@ -575,25 +390,11 @@ export default function HomePage() {
                   className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition">
                   Lanjut Checkout
                 </button>
->>>>>>> 1923a151e9a348b8334218a5b01f5dc287a47faf
               </div>
             </div>
-
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                Batal
-              </button>
-              <button
-                onClick={confirmAddToCart}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                Tambahkan
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Order, OrderStatus } from "@/lib/types";
+import { Order, OrderStatus, getUserDisplayName, getMenuName } from "@/lib/types";
 import {
   OrderStatusBadge,
   PaymentStatusBadge,
@@ -14,6 +14,7 @@ import {
 import { ConfirmActionModal } from "./order-controls/ConfirmActionModal";
 import { PaymentScopeModal } from "./order-controls/PaymentScopeModal";
 import NotesModal from "./NotesModal";
+import { updateOrderStatus, markOrderPaid, markGroupPaid } from "@/lib/api";
 
 interface VerificationTableProps {
   orders: Order[];
@@ -95,7 +96,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
     setPaymentAction({ order, nextStatus });
   };
 
-  const handlePaymentSelect = (scope: "single" | "group") => {
+  const handlePaymentSelect = async (scope: "single" | "group") => {
     if (!paymentAction) return;
     const { order, nextStatus } = paymentAction;
     const targetIds =
@@ -105,11 +106,25 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
             .map((o) => o._id)
         : [order._id];
 
-    setPaymentStatus(targetIds, "paid");
+    try {
+      // Call API to mark as paid
+      if (scope === "group" && order.groupId) {
+        await markGroupPaid(order.groupId);
+      } else {
+        await markOrderPaid(order._id);
+      }
 
-    if (nextStatus) {
-      // Action triggered from status change (e.g., Tandai Selesai)
-      setOrderStatus(order._id, nextStatus);
+      // Update local state
+      setPaymentStatus(targetIds, "paid");
+
+      if (nextStatus) {
+        // Action triggered from status change (e.g., Tandai Selesai)
+        await updateOrderStatus(order._id, nextStatus);
+        setOrderStatus(order._id, nextStatus);
+      }
+    } catch (err: any) {
+      console.error("Gagal update pembayaran:", err.message);
+      alert("Gagal update pembayaran: " + err.message);
     }
 
     setPaymentAction(null);
@@ -214,7 +229,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
                   const itemsSummary =
                     order.items && order.items.length > 0
                       ? order.items
-                          .map((item) => `${item.menuId} x${item.quantity}`)
+                          .map((item) => `${getMenuName(item.menuId)} x${item.quantity}`)
                           .join(", ")
                       : "-";
 
@@ -230,7 +245,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-800">
-                        {order.customerName || order.userId}
+                        {order.customerName || getUserDisplayName(order.userId)}
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-800">
@@ -297,8 +312,14 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
             ORDER_STATUS_LABELS[confirmAction.nextStatus]
           }?`}
           onClose={() => setConfirmAction(null)}
-          onConfirm={() => {
-            setOrderStatus(confirmAction.order._id, confirmAction.nextStatus);
+          onConfirm={async () => {
+            try {
+              await updateOrderStatus(confirmAction.order._id, confirmAction.nextStatus);
+              setOrderStatus(confirmAction.order._id, confirmAction.nextStatus);
+            } catch (err: any) {
+              console.error("Gagal update status:", err.message);
+              alert("Gagal update status: " + err.message);
+            }
             setConfirmAction(null);
           }}
         />
@@ -331,7 +352,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
                   Detail Pesanan: {orderDetailModal._id}
                 </h4>
                 <p className="text-sm text-gray-600">
-                  {orderDetailModal.customerName || orderDetailModal.userId} •{" "}
+                  {orderDetailModal.customerName || getUserDisplayName(orderDetailModal.userId)} •{" "}
                   {orderDetailModal.deliveryTime} /{" "}
                   {orderDetailModal.deliveryType === "Delivery"
                     ? "Diantar"
@@ -377,7 +398,7 @@ export default function VerificationTable({ orders }: VerificationTableProps) {
                 <ul className="list-disc list-inside space-y-1 text-sm text-gray-800">
                   {orderDetailModal.items.map((item, idx) => (
                     <li key={idx}>
-                      {item.menuId} x{item.quantity}{" "}
+                      {getMenuName(item.menuId)} x{item.quantity}{" "}
                       {item.specialNotes ? `(${item.specialNotes})` : ""}
                     </li>
                   ))}

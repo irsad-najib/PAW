@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ConfirmActionModal } from "./order-controls/ConfirmActionModal";
+import { batchUpdateOrderStatus } from "@/lib/api";
 
 interface MenuItemData {
   name: string;
@@ -13,6 +14,7 @@ interface MealTimeData {
   mealTime: string;
   totalPortions: number;
   items: MenuItemData[];
+  orderIds?: string[];
 }
 
 type MealStatus = "pending" | "processing" | "ready";
@@ -21,23 +23,28 @@ interface ProductionSummaryProps {
   date?: string;
   mealData: MealTimeData[];
   onOpenNotes?: (menuLabel: string, notes: string[]) => void;
+  onStatusUpdated?: () => void;
 }
 
 type ConfirmAction = {
   mealIndex: number;
   nextStatus: MealStatus;
+  orderStatus: string;
   title: string;
   description: string;
+  orderIds: string[];
 };
 
 export default function ProductionSummary({
   mealData,
   onOpenNotes,
+  onStatusUpdated,
 }: ProductionSummaryProps) {
   const [mealStatuses, setMealStatuses] = useState<MealStatus[]>([]);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
     null
   );
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     setMealStatuses(mealData.map(() => "pending"));
@@ -46,24 +53,46 @@ export default function ProductionSummary({
   const requestStatusChange = (
     mealIndex: number,
     nextStatus: MealStatus,
+    orderStatus: string,
     mealLabel: string,
-    actionLabel: string
+    actionLabel: string,
+    orderIds: string[]
   ) => {
+    if (!orderIds || orderIds.length === 0) {
+      alert("Tidak ada pesanan untuk diupdate");
+      return;
+    }
+    
     setConfirmAction({
       mealIndex,
       nextStatus,
+      orderStatus,
       title: actionLabel,
-      description: `Ubah semua pesanan slot ${mealLabel} menjadi ${actionLabel}?`,
+      description: `Ubah status ${orderIds.length} pesanan pada slot ${mealLabel} menjadi ${actionLabel}?`,
+      orderIds,
     });
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!confirmAction) return;
-    const { mealIndex, nextStatus } = confirmAction;
-    setMealStatuses((prev) =>
-      prev.map((status, idx) => (idx === mealIndex ? nextStatus : status))
-    );
-    setConfirmAction(null);
+    const { mealIndex, nextStatus, orderStatus, orderIds } = confirmAction;
+    
+    setUpdating(true);
+    try {
+      await batchUpdateOrderStatus(orderIds, orderStatus);
+      setMealStatuses((prev) =>
+        prev.map((status, idx) => (idx === mealIndex ? nextStatus : status))
+      );
+      if (onStatusUpdated) {
+        onStatusUpdated();
+      }
+    } catch (err: any) {
+      console.error("Gagal update status batch:", err.message);
+      alert("Gagal update status: " + err.message);
+    } finally {
+      setUpdating(false);
+      setConfirmAction(null);
+    }
   };
 
   return (
@@ -96,13 +125,16 @@ export default function ProductionSummary({
                         requestStatusChange(
                           index,
                           "processing",
+                          "processing",
                           meal.mealTime,
-                          "Proses Pesanan"
+                          "Proses Pesanan",
+                          meal.orderIds || []
                         )
                       }
-                      className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-lg hover:bg-yellow-600 transition-colors whitespace-nowrap"
+                      disabled={updating || !meal.orderIds || meal.orderIds.length === 0}
+                      className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-lg hover:bg-yellow-600 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Proses Pesanan
+                      {updating ? "Updating..." : "Proses Pesanan"}
                     </button>
                   )}
 
@@ -112,13 +144,16 @@ export default function ProductionSummary({
                         requestStatusChange(
                           index,
                           "ready",
+                          "ready",
                           meal.mealTime,
-                          "Tandai Siap"
+                          "Tandai Siap",
+                          meal.orderIds || []
                         )
                       }
-                      className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap"
+                      disabled={updating || !meal.orderIds || meal.orderIds.length === 0}
+                      className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Tandai Siap
+                      {updating ? "Updating..." : "Tandai Siap"}
                     </button>
                   )}
 
