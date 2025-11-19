@@ -253,7 +253,6 @@ router.get("/admin", authenticateToken, requireAdmin, async (req, res) => {
     if (deliveryTime) query.deliveryTime = deliveryTime;
     if (deliveryType) query.deliveryType = deliveryType;
 
-    const user = await User.findById({ UserId });
     if (date) {
       const range = buildDayRange(date);
       if (!range) {
@@ -573,6 +572,7 @@ router.post("/", authenticateToken, async (req, res) => {
         .status(400)
         .json({ message: "deliveryAddress required for Delivery" });
     }
+    const user = await User.findById(userId);
 
     const menuIds = items.map((i) => i.menuId);
     const uniqueIds = new Set(menuIds.map((id) => String(id)));
@@ -677,7 +677,6 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     // Send WhatsApp notification
-    const user = await User.findById(userId);
     if (user && user.phone) {
       try {
         const totalAmount = createdOrders.reduce(
