@@ -252,6 +252,8 @@ router.get("/admin", authenticateToken, requireAdmin, async (req, res) => {
     if (paymentStatus) query.paymentStatus = paymentStatus;
     if (deliveryTime) query.deliveryTime = deliveryTime;
     if (deliveryType) query.deliveryType = deliveryType;
+
+    const user = await User.findById({ UserId });
     if (date) {
       const range = buildDayRange(date);
       if (!range) {
