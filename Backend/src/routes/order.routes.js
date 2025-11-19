@@ -6,9 +6,18 @@ const User = require("../models/user.model");
 const authenticateToken = require("../middleware/JWT");
 const axios = require("axios");
 
-const FONNTE_API_URL = "https://api.fonnte.com/send";
-const FONNTE_TOKEN = process.env.FONNTE_TOKEN;
-const VALID_ORDER_STATUSES = ["accepted", "processing", "ready", "completed", "cancelled"];
+const {
+  sendWhatsAppNotification,
+  buildOrderCreatedMessage,
+  buildOrderCompletedMessage,
+} = require("../utils/whatsapp");
+const VALID_ORDER_STATUSES = [
+  "accepted",
+  "processing",
+  "ready",
+  "completed",
+  "cancelled",
+];
 const ORDER_POPULATE = [
   { path: "items.menuId", select: "name price date stock isAvailable" },
   { path: "userId", select: "username name phone email" },
@@ -26,34 +35,7 @@ function buildDayRange(dateInput) {
   return { startOfDay, endOfDay };
 }
 
-// Helper function untuk kirim notifikasi WhatsApp
-async function sendWhatsAppNotification(phone, message) {
-  try {
-    if (!FONNTE_TOKEN) {
-      console.warn("FONNTE_TOKEN not configured, skipping WhatsApp notification");
-      return null;
-    }
-    const response = await axios.post(
-      FONNTE_API_URL,
-      {
-        target: phone,
-        message: message,
-      },
-      {
-        headers: {
-          Authorization: FONNTE_TOKEN,
-        },
-      }
-    );
-    return response.data;
-  } catch (error) {
-    console.error(
-      "Failed to send WhatsApp notification:",
-      error.response?.data || error.message
-    );
-    return null;
-  }
-}
+// sendWhatsAppNotification and message builders are provided by ../utils/whatsapp
 
 function requireAdmin(req, res, next) {
   if (!req.auth || req.auth.role !== "admin") {
@@ -195,47 +177,46 @@ async function populateOrders(docs) {
  *       200:
  *         description: Order summary
  */
-router.get("/admin/summary", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { date } = req.query;
-    const range = buildDayRange(date);
-    if (!range) {
-      return res.status(400).json({ message: "Invalid date format" });
-    }
-    const { startOfDay, endOfDay } = range;
-
-    const orders = await Order.find({
-      orderDates: {
-        $elemMatch: {
-          $gte: startOfDay,
-          $lte: endOfDay
-        }
+router.get(
+  "/admin/summary",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { date } = req.query;
+      const range = buildDayRange(date);
+      if (!range) {
+        return res.status(400).json({ message: "Invalid date format" });
       }
-    }).populate(ORDER_POPULATE);
+      const { startOfDay, endOfDay } = range;
 
-    const summary = {
-      totalOrders: orders.length,
-      totalRevenue: orders.reduce((sum, o) => sum + (o.totalPrice || 0), 0),
-      byStatus: {},
-      byPaymentStatus: {},
-      byDeliveryTime: {}
-    };
+      const orders = await Order.find({
+        orderDates: {
+          $elemMatch: {
+            $gte: startOfDay.toISOString(),
+            $lte: endOfDay.toISOString(),
+          },
+        },
+      }).populate("items.menuId");
 
-    orders.forEach(order => {
-      summary.byStatus[order.orderStatus] = (summary.byStatus[order.orderStatus] || 0) + 1;
-      summary.byPaymentStatus[order.paymentStatus] = (summary.byPaymentStatus[order.paymentStatus] || 0) + 1;
-      summary.byDeliveryTime[order.deliveryTime] = (summary.byDeliveryTime[order.deliveryTime] || 0) + 1;
-    });
+      const summary = {
+        totalOrders: orders.length,
+        totalRevenue: orders.reduce((sum, o) => sum + (o.totalPrice || 0), 0),
+        byStatus: {},
+        byPaymentStatus: {},
+        byDeliveryTime: {},
+      };
 
-    res.json({
-      date: startOfDay.toISOString().split("T")[0],
-      summary,
-      orders
-    });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
+      res.json({
+        date: startOfDay.toISOString().split("T")[0],
+        summary,
+        orders,
+      });
+    } catch (e) {
+      res.status(500).json({ message: e.message });
+    }
   }
-});
+);
 
 /**
  * @swagger
@@ -256,15 +237,15 @@ router.get("/admin", authenticateToken, requireAdmin, async (req, res) => {
       deliveryType,
       date,
       page = 1,
-      limit = 50
+      limit = 50,
     } = req.query;
 
     const query = {};
-    
+
     if (search) {
       query.$or = [
         { _id: { $regex: search, $options: "i" } },
-        { customerName: { $regex: search, $options: "i" } }
+        { customerName: { $regex: search, $options: "i" } },
       ];
     }
     if (status) query.orderStatus = status;
@@ -279,8 +260,8 @@ router.get("/admin", authenticateToken, requireAdmin, async (req, res) => {
       query.orderDates = {
         $elemMatch: {
           $gte: range.startOfDay,
-          $lte: range.endOfDay
-        }
+          $lte: range.endOfDay,
+        },
       };
     }
 
@@ -291,7 +272,7 @@ router.get("/admin", authenticateToken, requireAdmin, async (req, res) => {
         .skip(skip)
         .limit(parseInt(limit))
         .populate(ORDER_POPULATE),
-      Order.countDocuments(query)
+      Order.countDocuments(query),
     ]);
 
     res.json({ page: parseInt(page), limit: parseInt(limit), total, items });
@@ -309,31 +290,76 @@ router.get("/admin", authenticateToken, requireAdmin, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.patch("/batch/status", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { orderIds, orderStatus } = req.body;
-    
-    if (!Array.isArray(orderIds) || orderIds.length === 0) {
-      return res.status(400).json({ message: "orderIds must be a non-empty array" });
-    }
-    
-    if (!VALID_ORDER_STATUSES.includes(orderStatus)) {
-      return res.status(400).json({ message: "Invalid orderStatus" });
-    }
+router.patch(
+  "/batch/status",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { orderIds, orderStatus } = req.body;
 
-    const result = await Order.updateMany(
-      { _id: { $in: orderIds } },
-      { $set: { orderStatus } }
-    );
+      if (!Array.isArray(orderIds) || orderIds.length === 0) {
+        return res
+          .status(400)
+          .json({ message: "orderIds must be a non-empty array" });
+      }
 
-    res.json({ 
-      message: `Updated ${result.modifiedCount} orders`,
-      modifiedCount: result.modifiedCount
-    });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
+      if (!VALID_ORDER_STATUSES.includes(orderStatus)) {
+        return res.status(400).json({ message: "Invalid orderStatus" });
+      }
+
+      // fetch previous orders to determine transitions
+      const prevOrders = await Order.find({ _id: { $in: orderIds } }).populate(
+        ORDER_POPULATE
+      );
+
+      const result = await Order.updateMany(
+        { _id: { $in: orderIds } },
+        { $set: { orderStatus } }
+      );
+
+      // refresh updated orders
+      const updated = await Order.find({ _id: { $in: orderIds } }).populate(
+        ORDER_POPULATE
+      );
+
+      // Notify users if orders transitioned to 'completed'
+      if (orderStatus === "completed") {
+        for (const u of updated) {
+          const prev = prevOrders.find((p) => String(p._id) === String(u._id));
+          const prevStatus = prev ? prev.orderStatus : null;
+          if (prevStatus !== "completed") {
+            try {
+              const user = await User.findById(u.userId);
+              if (user && user.phone) {
+                const message = buildOrderCompletedMessage({
+                  name: user.name || user.username,
+                  orderId: u._id,
+                  date: u.orderDates && u.orderDates[0],
+                  deliveryTime: u.deliveryTime,
+                  deliveryType: u.deliveryType,
+                });
+                await sendWhatsAppNotification(user.phone, message);
+              }
+            } catch (notifError) {
+              console.error(
+                "Failed to send batch completion notification:",
+                notifError
+              );
+            }
+          }
+        }
+      }
+
+      res.json({
+        message: `Updated ${result.modifiedCount} orders`,
+        modifiedCount: result.modifiedCount,
+      });
+    } catch (e) {
+      res.status(500).json({ message: e.message });
+    }
   }
-});
+);
 
 /**
  * @swagger
@@ -344,60 +370,92 @@ router.patch("/batch/status", authenticateToken, requireAdmin, async (req, res) 
  *     security:
  *       - bearerAuth: []
  */
-router.patch("/group/:groupId/payment", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { groupId } = req.params;
-    const { action } = req.body || {};
-    
-    if (action !== "markPaid") {
-      return res.status(400).json({ message: "Invalid action" });
-    }
-    
-    const orders = await Order.find({ groupId });
-    if (!orders.length) {
-      return res.status(404).json({ message: "Group not found" });
-    }
-    
-    const methodSet = new Set(orders.map((o) => o.paymentMethod));
-    if (methodSet.size !== 1) {
-      return res.status(400).json({ message: "Mixed paymentMethod in group not allowed" });
-    }
-    const method = [...methodSet][0];
+router.patch(
+  "/group/:groupId/payment",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { groupId } = req.params;
+      const { action } = req.body || {};
 
-    const unpaid = orders.filter((o) => o.paymentStatus !== "paid");
-    if (!unpaid.length) {
+      if (action !== "markPaid") {
+        return res.status(400).json({ message: "Invalid action" });
+      }
+
+      const orders = await Order.find({ groupId });
+      if (!orders.length) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+
+      const methodSet = new Set(orders.map((o) => o.paymentMethod));
+      if (methodSet.size !== 1) {
+        return res
+          .status(400)
+          .json({ message: "Mixed paymentMethod in group not allowed" });
+      }
+      const method = [...methodSet][0];
+
+      const unpaid = orders.filter((o) => o.paymentStatus !== "paid");
+      if (!unpaid.length) {
+        return res.json({
+          message: "Group already fully paid",
+          groupId,
+          orders,
+        });
+      }
+
+      const allowedFrom = method === "cash" ? ["unpaid"] : ["pending"];
+      const invalidState = unpaid.find(
+        (o) => !allowedFrom.includes(o.paymentStatus)
+      );
+      if (invalidState) {
+        return res.status(400).json({
+          message: `Cannot mark group paid: found order with paymentStatus=${invalidState.paymentStatus} (method=${method})`,
+        });
+      }
+
+      await Order.updateMany(
+        { groupId, paymentStatus: { $in: allowedFrom } },
+        { $set: { paymentStatus: "paid" } }
+      );
+
+      const refreshed = await Order.find({ groupId })
+        .sort({ createdAt: 1 })
+        .populate(ORDER_POPULATE);
+
+      // Send payment success notification to users for orders that were updated
+      for (const r of refreshed) {
+        try {
+          // Only notify if this order was previously in unpaid/pending
+          const wasUnpaid = unpaid.find((u) => String(u._id) === String(r._id));
+          if (!wasUnpaid) continue;
+          const user = await User.findById(r.userId);
+          if (user && user.phone) {
+            const message = `Halo ${
+              user.name || user.username
+            }, pembayaran untuk pesanan ${String(r._id)
+              .slice(-8)
+              .toUpperCase()} sebesar Rp${(r.totalPrice || 0).toLocaleString(
+              "id-ID"
+            )} telah diterima. Terima kasih!`;
+            await sendWhatsAppNotification(user.phone, message);
+          }
+        } catch (e) {
+          console.error("Failed to send group payment notification:", e);
+        }
+      }
+
       return res.json({
-        message: "Group already fully paid",
+        message: `Group payment set to paid (${method})`,
         groupId,
-        orders,
+        orders: refreshed,
       });
+    } catch (e) {
+      return res.status(500).json({ message: e.message });
     }
-
-    const allowedFrom = method === "cash" ? ["unpaid"] : ["pending"];
-    const invalidState = unpaid.find((o) => !allowedFrom.includes(o.paymentStatus));
-    if (invalidState) {
-      return res.status(400).json({
-        message: `Cannot mark group paid: found order with paymentStatus=${invalidState.paymentStatus} (method=${method})`,
-      });
-    }
-
-    await Order.updateMany(
-      { groupId, paymentStatus: { $in: allowedFrom } },
-      { $set: { paymentStatus: "paid" } }
-    );
-    
-    const refreshed = await Order.find({ groupId })
-      .sort({ createdAt: 1 })
-      .populate(ORDER_POPULATE);
-    return res.json({
-      message: `Group payment set to paid (${method})`,
-      groupId,
-      orders: refreshed,
-    });
-  } catch (e) {
-    return res.status(500).json({ message: e.message });
   }
-});
+);
 
 /**
  * @swagger
@@ -414,20 +472,20 @@ router.get("/group/:groupId", authenticateToken, async (req, res) => {
     const orders = await Order.find({ groupId })
       .sort({ createdAt: 1 })
       .populate(ORDER_POPULATE);
-      
+
     if (!orders.length) {
       return res.status(404).json({ message: "Group not found" });
     }
-    
+
     const allOwned = orders.every((o) => String(o.userId) === req.auth.userId);
     if (!allOwned && req.auth.role !== "admin") {
       return res.status(403).json({ message: "Forbidden" });
     }
-    
+
     const paymentStatuses = [...new Set(orders.map((o) => o.paymentStatus))];
     const paymentMethod = orders[0].paymentMethod;
     const totals = orders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-    
+
     return res.json({
       groupId,
       count: orders.length,
@@ -459,7 +517,7 @@ router.get("/", authenticateToken, async (req, res) => {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
     const skip = (page - 1) * limit;
-    
+
     const [items, total] = await Promise.all([
       Order.find({ userId: req.auth.userId })
         .sort({ createdAt: -1 })
@@ -468,7 +526,7 @@ router.get("/", authenticateToken, async (req, res) => {
         .populate(ORDER_POPULATE),
       Order.countDocuments({ userId: req.auth.userId }),
     ]);
-    
+
     res.json({ page, limit, total, items });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -509,21 +567,26 @@ router.post("/", authenticateToken, async (req, res) => {
       return res.status(400).json({ message: "paymentMethod invalid" });
     }
     if (deliveryType === "Delivery" && !deliveryAddress) {
-      return res.status(400).json({ message: "deliveryAddress required for Delivery" });
+      return res
+        .status(400)
+        .json({ message: "deliveryAddress required for Delivery" });
     }
-    const user = await User.findById(userId);
 
     const menuIds = items.map((i) => i.menuId);
     const uniqueIds = new Set(menuIds.map((id) => String(id)));
     if (uniqueIds.size !== menuIds.length) {
-      return res.status(400).json({ message: "Duplicate menuId in items not allowed" });
+      return res
+        .status(400)
+        .json({ message: "Duplicate menuId in items not allowed" });
     }
 
     const menus = await Menu.find({ _id: { $in: menuIds } });
     if (menus.length !== menuIds.length) {
       const foundIds = new Set(menus.map((m) => String(m._id)));
       const missing = menuIds.filter((id) => !foundIds.has(String(id)));
-      return res.status(404).json({ message: `Menu not found: ${missing.join(",")}` });
+      return res
+        .status(404)
+        .json({ message: `Menu not found: ${missing.join(",")}` });
     }
 
     const menuMap = new Map(menus.map((m) => [String(m._id), m]));
@@ -534,21 +597,27 @@ router.post("/", authenticateToken, async (req, res) => {
       if (!it.menuId || !it.quantity || it.quantity <= 0) {
         return res.status(400).json({ message: "Invalid item entry" });
       }
-      
+
       const menu = menuMap.get(String(it.menuId));
       if (!menu) {
         return res.status(404).json({ message: `Menu ${it.menuId} not found` });
       }
       if (!menu.isAvailable) {
-        return res.status(400).json({ message: `Menu ${menu.name} not available` });
+        return res
+          .status(400)
+          .json({ message: `Menu ${menu.name} not available` });
       }
       if (!menu.date) {
-        return res.status(400).json({ message: `Menu ${menu.name} tidak memiliki date` });
+        return res
+          .status(400)
+          .json({ message: `Menu ${menu.name} tidak memiliki date` });
       }
       if (menu.stock != null && menu.stock < it.quantity) {
-        return res.status(400).json({ message: `Stock not enough for ${menu.name}` });
+        return res
+          .status(400)
+          .json({ message: `Stock not enough for ${menu.name}` });
       }
-      
+
       const dateISO = menu.date.toISOString();
       if (!groups.has(dateISO)) {
         groups.set(dateISO, { date: menu.date, items: [] });
@@ -577,10 +646,15 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     const createdOrders = [];
-    const sortedGroups = Array.from(groups.values()).sort((a, b) => a.date - b.date);
-    
+    const sortedGroups = Array.from(groups.values()).sort(
+      (a, b) => a.date - b.date
+    );
+
     for (const [idx, g] of sortedGroups.entries()) {
-      const totalPrice = g.items.reduce((sum, it) => sum + it._price * it.quantity, 0);
+      const totalPrice = g.items.reduce(
+        (sum, it) => sum + it._price * it.quantity,
+        0
+      );
       const payload = {
         userId,
         items: g.items.map(({ _price, ...rest }) => rest),
@@ -601,19 +675,23 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     // Send WhatsApp notification
+    const user = await User.findById(userId);
     if (user && user.phone) {
       try {
-        const totalAmount = createdOrders.reduce((sum, o) => sum + o.totalPrice, 0);
+        const totalAmount = createdOrders.reduce(
+          (sum, o) => sum + o.totalPrice,
+          0
+        );
         const orderCount = createdOrders.length;
-        
-        let message;
-        if (orderCount > 1) {
-          message = `Halo ${user.name || user.username}! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Jumlah pesanan: ${orderCount} hari\n- Total: Rp ${totalAmount.toLocaleString("id-ID")}\n- Metode: ${paymentMethod === "cash" ? "Tunai" : "Transfer"}\n- Status: ${paymentMethod === "cash" ? "Belum Bayar" : "Menunggu Pembayaran"}\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
-        } else {
-          const order = createdOrders[0];
-          message = `Halo ${user.name || user.username}! 🎉\n\nPesanan Anda berhasil dibuat!\n\nDetail:\n- Order ID: ${order._id.toString().slice(-8).toUpperCase()}\n- Total: Rp ${order.totalPrice.toLocaleString("id-ID")}\n- Tanggal: ${new Date(order.orderDates[0]).toLocaleDateString("id-ID")}\n- Waktu: ${order.deliveryTime}\n- Metode: ${paymentMethod === "cash" ? "Tunai" : "Transfer"}\n\nTerima kasih telah memesan di Katering Bu Lala! 🍱`;
-        }
-        
+        const message = buildOrderCreatedMessage({
+          name: user.name || user.username,
+          orderId: createdOrders[0]?._id,
+          totalAmount,
+          orderCount,
+          deliveryTime,
+          paymentMethod,
+        });
+
         await sendWhatsAppNotification(user.phone, message);
       } catch (notifError) {
         console.error("Failed to send order notification:", notifError);
@@ -630,9 +708,9 @@ router.post("/", authenticateToken, async (req, res) => {
         orders: populated,
       });
     } else {
-      return res.status(201).json({ 
-        message: "Order created", 
-        order: populated[0] 
+      return res.status(201).json({
+        message: "Order created",
+        order: populated[0],
       });
     }
   } catch (e) {
@@ -678,57 +756,68 @@ router.get("/:id", authenticateToken, async (req, res) => {
  *     security:
  *       - bearerAuth: []
  */
-router.patch("/:id/status", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { orderStatus } = req.body;
-    
-    if (!VALID_ORDER_STATUSES.includes(orderStatus)) {
-      return res.status(400).json({ message: "Invalid orderStatus" });
-    }
-    
-    const doc = await Order.findById(req.params.id).populate(ORDER_POPULATE);
-    if (!doc) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-    if (doc.orderStatus === "cancelled") {
-      return res.status(400).json({ message: "Already cancelled" });
-    }
+router.patch(
+  "/:id/status",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { orderStatus } = req.body;
 
-    const previousStatus = doc.orderStatus;
+      if (!VALID_ORDER_STATUSES.includes(orderStatus)) {
+        return res.status(400).json({ message: "Invalid orderStatus" });
+      }
 
-    // Restore stock if cancelled
-    if (orderStatus === "cancelled" && !doc.stockRestored) {
-      for (const it of doc.items) {
-        const menu = await Menu.findById(it.menuId);
-        if (menu && menu.stock != null) {
-          menu.stock += it.quantity;
-          await menu.save();
+      const doc = await Order.findById(req.params.id).populate(ORDER_POPULATE);
+      if (!doc) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      if (doc.orderStatus === "cancelled") {
+        return res.status(400).json({ message: "Already cancelled" });
+      }
+
+      const previousStatus = doc.orderStatus;
+
+      // Restore stock if cancelled
+      if (orderStatus === "cancelled" && !doc.stockRestored) {
+        for (const it of doc.items) {
+          const menu = await Menu.findById(it.menuId);
+          if (menu && menu.stock != null) {
+            menu.stock += it.quantity;
+            await menu.save();
+          }
+        }
+        doc.stockRestored = true;
+      }
+
+      doc.orderStatus = orderStatus;
+      await doc.save();
+
+      // Send notification when completed
+      if (orderStatus === "completed" && previousStatus !== "completed") {
+        try {
+          const user = await User.findById(doc.userId);
+          if (user && user.phone) {
+            const message = buildOrderCompletedMessage({
+              name: user.name || user.username,
+              orderId: doc._id,
+              date: doc.orderDates[0],
+              deliveryTime: doc.deliveryTime,
+              deliveryType: doc.deliveryType,
+            });
+            await sendWhatsAppNotification(user.phone, message);
+          }
+        } catch (notifError) {
+          console.error("Failed to send completion notification:", notifError);
         }
       }
-      doc.stockRestored = true;
-    }
-    
-    doc.orderStatus = orderStatus;
-    await doc.save();
 
-    // Send notification when completed
-    if (orderStatus === "completed" && previousStatus !== "completed") {
-      try {
-        const user = await User.findById(doc.userId);
-        if (user && user.phone) {
-          const message = `Halo ${user.name || user.username}! ✅\n\nPesanan Anda sudah READY! 🎉\n\nOrder ID: ${doc._id.toString().slice(-8).toUpperCase()}\nTanggal: ${new Date(doc.orderDates[0]).toLocaleDateString("id-ID")}\nWaktu: ${doc.deliveryTime}\n\nPesanan Anda sudah siap untuk ${doc.deliveryType === "Delivery" ? "diantar" : "diambil"}.\n\nTerima kasih! 🍱`;
-          await sendWhatsAppNotification(user.phone, message);
-        }
-      } catch (notifError) {
-        console.error("Failed to send completion notification:", notifError);
-      }
+      res.json({ message: "Status updated", order: doc });
+    } catch (e) {
+      res.status(500).json({ message: e.message });
     }
-
-    res.json({ message: "Status updated", order: doc });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
   }
-});
+);
 
 /**
  * @swagger
@@ -739,34 +828,54 @@ router.patch("/:id/status", authenticateToken, requireAdmin, async (req, res) =>
  *     security:
  *       - bearerAuth: []
  */
-router.patch("/:id/payment", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { action } = req.body || {};
-    
-    if (action !== "markPaid") {
-      return res.status(400).json({ message: "Invalid action" });
+router.patch(
+  "/:id/payment",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { action } = req.body || {};
+
+      if (action !== "markPaid") {
+        return res.status(400).json({ message: "Invalid action" });
+      }
+
+      const order = await Order.findById(id).populate(ORDER_POPULATE);
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      if (order.paymentStatus === "paid") {
+        return res.status(400).json({ message: "Already paid" });
+      }
+      if (!["cash", "transfer"].includes(order.paymentMethod)) {
+        return res.status(400).json({ message: "Unsupported paymentMethod" });
+      }
+
+      order.paymentStatus = "paid";
+      await order.save();
+
+      // Notify user about payment success
+      try {
+        const user = await User.findById(order.userId);
+        if (user && user.phone) {
+          const message = `Halo ${
+            user.name || user.username
+          }, pembayaran untuk pesanan ${String(order._id)
+            .slice(-8)
+            .toUpperCase()} telah diterima. Terima kasih!`;
+          await sendWhatsAppNotification(user.phone, message);
+        }
+      } catch (e) {
+        console.error("Failed to send payment notification:", e);
+      }
+
+      return res.json({ message: "Payment set to paid", order });
+    } catch (e) {
+      return res.status(500).json({ message: e.message });
     }
-    
-    const order = await Order.findById(id).populate(ORDER_POPULATE);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-    if (order.paymentStatus === "paid") {
-      return res.status(400).json({ message: "Already paid" });
-    }
-    if (!["cash", "transfer"].includes(order.paymentMethod)) {
-      return res.status(400).json({ message: "Unsupported paymentMethod" });
-    }
-    
-    order.paymentStatus = "paid";
-    await order.save();
-    
-    return res.json({ message: "Payment set to paid", order });
-  } catch (e) {
-    return res.status(500).json({ message: e.message });
   }
-});
+);
 
 /**
  * @swagger
@@ -777,34 +886,39 @@ router.patch("/:id/payment", authenticateToken, requireAdmin, async (req, res) =
  *     security:
  *       - bearerAuth: []
  */
-router.post("/:id/cancel", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const doc = await Order.findById(req.params.id).populate(ORDER_POPULATE);
-    if (!doc) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-    if (doc.orderStatus === "cancelled") {
-      return res.status(400).json({ message: "Already cancelled" });
-    }
-    
-    if (!doc.stockRestored) {
-      for (const it of doc.items) {
-        const menu = await Menu.findById(it.menuId);
-        if (menu && menu.stock != null) {
-          menu.stock += it.quantity;
-          await menu.save();
-        }
+router.post(
+  "/:id/cancel",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const doc = await Order.findById(req.params.id).populate(ORDER_POPULATE);
+      if (!doc) {
+        return res.status(404).json({ message: "Order not found" });
       }
-      doc.stockRestored = true;
+      if (doc.orderStatus === "cancelled") {
+        return res.status(400).json({ message: "Already cancelled" });
+      }
+
+      if (!doc.stockRestored) {
+        for (const it of doc.items) {
+          const menu = await Menu.findById(it.menuId);
+          if (menu && menu.stock != null) {
+            menu.stock += it.quantity;
+            await menu.save();
+          }
+        }
+        doc.stockRestored = true;
+      }
+
+      doc.orderStatus = "cancelled";
+      await doc.save();
+
+      res.json({ message: "Order cancelled", order: doc });
+    } catch (e) {
+      res.status(500).json({ message: e.message });
     }
-    
-    doc.orderStatus = "cancelled";
-    await doc.save();
-    
-    res.json({ message: "Order cancelled", order: doc });
-  } catch (e) {
-    res.status(500).json({ message: e.message });
   }
-});
+);
 
 module.exports = router;
