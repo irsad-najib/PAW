@@ -355,7 +355,7 @@ router.get(
       const host = req.get("host");
       if (host && host.includes("vercel.app")) {
         // Production Vercel
-        frontendUrl = "https://paw-fe-irsad-najibs-projects.vercel.app";
+        frontendUrl = "https://paw-8.netlify.app";
       } else {
         // Local development
         frontendUrl = "http://localhost:3000";
