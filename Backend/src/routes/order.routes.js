@@ -511,6 +511,7 @@ router.post("/", authenticateToken, async (req, res) => {
     if (deliveryType === "Delivery" && !deliveryAddress) {
       return res.status(400).json({ message: "deliveryAddress required for Delivery" });
     }
+    const user = await User.findById(userId);
 
     const menuIds = items.map((i) => i.menuId);
     const uniqueIds = new Set(menuIds.map((id) => String(id)));
@@ -600,7 +601,6 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     // Send WhatsApp notification
-    const user = await User.findById(userId);
     if (user && user.phone) {
       try {
         const totalAmount = createdOrders.reduce((sum, o) => sum + o.totalPrice, 0);
